@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { 
-  ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, 
+  ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, Shield, Zap,
   Cpu, Terminal, Search, Send, Plus, X, Globe, FileText, Sun, Moon,
   MessageSquare, Sparkles, Code
 } from 'lucide-react';
@@ -12,11 +12,11 @@ import {
 gsap.registerPlugin(useGSAP);
 
 export default function Home() {
-  const [screen, setScreen] = useState<'landing' | 'app' | 'transition'>('landing');
-  const [nextScreen, setNextScreen] = useState<'landing' | 'app'>('app');
+  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'transition'>('landing');
+  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions'>('app');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const handleNavigate = (target: 'landing' | 'app') => {
+  const handleNavigate = (target: 'landing' | 'app' | 'sessions') => {
     if (screen === target || screen === 'transition') return;
     setNextScreen(target);
     setScreen('transition');
@@ -390,34 +390,38 @@ export default function Home() {
                   </button>
                 </div>
                 
-                <div className="stat-item">
+                <div className="stat-item glass-panel">
                   <div className="stat-item-header">
-                    <span>Hallucination Risk Index</span>
+                    <span>Risk Index</span>
                     {hallucinationRisk > 10 ? (
-                      <motion.span style={{ color: 'var(--danger-color)', display: 'flex', alignItems: 'center', gap: '4px' }} animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-                        <TriangleAlert size={14} /> High
-                      </motion.span>
+                      <motion.div className="status-indicator" animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+                        <div className="status-dot red"></div> High
+                      </motion.div>
                     ) : (
-                      <span style={{ color: 'var(--success-color)' }}>Nominal</span>
+                      <div className="status-indicator">
+                        <div className="status-dot green"></div> Nominal
+                      </div>
                     )}
                   </div>
-                  <div className="stat-value-large" style={{ color: hallucinationRisk > 10 ? 'var(--danger-color)' : 'var(--text-color)' }}>{hallucinationRisk}%</div>
+                  <div className="stat-value-large" style={{ color: hallucinationRisk > 10 ? 'var(--danger-color)' : 'var(--text-color)' }}>
+                    {hallucinationRisk}<span style={{ fontSize: '1.5rem', fontWeight: 500 }}>%</span>
+                  </div>
                 </div>
 
-                <div className="stat-item">
-                  <div className="stat-item-header"><span>Compute / Token Config</span></div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header" style={{ marginBottom: '1rem' }}><span>Compute Settings</span></div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontSize: '0.875rem' }}><Cpu size={14} style={{ display: 'inline', marginRight: '6px' }}/> Max Input</div>
-                        <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{tokenPresets[inputLimitIdx]}</div>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}><Cpu size={14} style={{ display: 'inline', marginRight: '6px' }}/> Input Limit</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 600 }}>{tokenPresets[inputLimitIdx]}</div>
                       </div>
                       <input type="range" className="range-slider" min={0} max={tokenPresets.length - 1} value={inputLimitIdx} onChange={(e) => setInputLimitIdx(Number(e.target.value))} />
                     </div>
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontSize: '0.875rem' }}><Terminal size={14} style={{ display: 'inline', marginRight: '6px' }}/> Max Output</div>
-                        <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{tokenPresets[outputLimitIdx]}</div>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}><Terminal size={14} style={{ display: 'inline', marginRight: '6px' }}/> Output Limit</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 600 }}>{tokenPresets[outputLimitIdx]}</div>
                       </div>
                       <input type="range" className="range-slider" min={0} max={tokenPresets.length - 1} value={outputLimitIdx} onChange={(e) => setOutputLimitIdx(Number(e.target.value))} />
                     </div>
@@ -425,16 +429,16 @@ export default function Home() {
                 </div>
 
                 <div className="stat-item">
-                  <div className="stat-item-header">
-                    <span>Connected Tools</span>
-                    <button className="icon-btn" onClick={() => alert("Modal to add tool")}><Plus size={14} /></button>
+                  <div className="stat-item-header" style={{ marginBottom: '1rem' }}>
+                    <span>Active Integrations</span>
+                    <button className="icon-btn" onClick={() => alert("Modal to add tool")}><Plus size={16} /></button>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', marginTop: '0.75rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {tools.map(tool => (
                       <div key={tool.id} className="tool-row">
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: tool.active ? 'var(--text-color)' : 'var(--text-muted)' }}>{tool.icon} {tool.name}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontSize: '0.75rem', color: tool.active ? 'var(--success-color)' : 'var(--text-muted)' }}>{tool.active ? 'Active' : 'Disabled'}</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: tool.active ? 'var(--text-color)' : 'var(--text-muted)' }}>{tool.icon} {tool.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: tool.active ? 'var(--success-color)' : 'var(--text-muted)', fontWeight: 500 }}>{tool.active ? 'Active' : 'Disabled'}</span>
                           <label className="toggle-switch">
                             <input type="checkbox" checked={tool.active} onChange={() => toggleTool(tool.id)} />
                             <span className="toggle-slider"></span>
@@ -460,8 +464,17 @@ export default function Home() {
 
           {/* Center Panel */}
           <motion.main layout className="glass-panel dash-panel dash-center">
-            <motion.div layout="position" className="dash-title">
-              Session Overview
+            <motion.div layout="position" className="dash-title" style={{ paddingBottom: '1.5rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>Hello Hari</span>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <div className="telemetry-chip"><Shield size={14} color="var(--success-color)" /> <span>1,204 Actions Blocked</span></div>
+                  <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>42.1k Tokens Saved</span></div>
+                </div>
+              </div>
+              <button className="subtle-btn" onClick={() => handleNavigate('sessions')}>
+                View all sessions
+              </button>
             </motion.div>
             
             <div className="chat-container" ref={chatContainer}>
@@ -492,25 +505,17 @@ export default function Home() {
                   <div className="mode-switcher">
                     {['Ask', 'Search', 'Research'].map(mode => (
                       <button key={mode} className={`mode-btn ${chatMode === mode ? 'active' : ''}`} onClick={() => setChatMode(mode)}>
-                        {mode === 'Ask' && <MessageSquare size={12} style={{ display: 'inline', marginRight: '4px' }} />}
-                        {mode === 'Search' && <Search size={12} style={{ display: 'inline', marginRight: '4px' }} />}
-                        {mode === 'Research' && <Sparkles size={12} style={{ display: 'inline', marginRight: '4px' }} />}
+                        {mode === 'Ask' && <MessageSquare size={14} style={{ display: 'inline', marginRight: '6px' }} />}
+                        {mode === 'Search' && <Search size={14} style={{ display: 'inline', marginRight: '6px' }} />}
+                        {mode === 'Research' && <Sparkles size={14} style={{ display: 'inline', marginRight: '6px' }} />}
                         {mode}
                       </button>
                     ))}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Code size={14} color="var(--accent-color)" />
-                    <select className="chat-model-picker" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
-                      <option value="llama-3-8b-local">Llama-3-8B (Local)</option>
-                      <option value="mistral-7b-v0.2">Mistral-7B v0.2</option>
-                      <option value="phi-3-mini-4k">Phi-3-Mini-4k</option>
-                    </select>
-                  </div>
                 </div>
                 <div className="chat-input-row">
                   <input type="text" placeholder="Command the local AI..." />
-                  <button><Send size={16} /> Execute</button>
+                  <button className="send-btn"><Send size={18} /></button>
                 </div>
               </motion.div>
             </div>
@@ -535,27 +540,38 @@ export default function Home() {
                 </div>
                 
                 <div className="policy-block">
-                  <h4>Active Rules</h4>
-                  <div className="rule-row">
-                    <div>
-                      <div>Read Local Files</div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Scope: /home/user/</div>
-                    </div>
-                    <span className="tag green">Allowed</span>
+                  <div className="dash-title-small" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Active Rules</span>
+                    <span>Status</span>
                   </div>
-                  <div className="rule-row">
-                    <div>
-                      <div>System Modifications</div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Condition: `sudo`</div>
+                  <div className="policy-list">
+                    <div className="rule-row">
+                      <div>
+                        <div className="rule-row-title">Read Local Files</div>
+                        <div className="rule-row-desc">Scope: /home/user/</div>
+                      </div>
+                      <div className="status-indicator">
+                        <div className="status-dot green"></div> Allowed
+                      </div>
                     </div>
-                    <span className="tag red">Blocked</span>
-                  </div>
-                  <div className="rule-row">
-                    <div>
-                      <div>Web Search</div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Condition: Any Request</div>
+                    <div className="rule-row">
+                      <div>
+                        <div className="rule-row-title">System Modifications</div>
+                        <div className="rule-row-desc">Condition: `sudo`</div>
+                      </div>
+                      <div className="status-indicator">
+                        <div className="status-dot red"></div> Blocked
+                      </div>
                     </div>
-                    <span className="tag yellow">Requires Approval</span>
+                    <div className="rule-row">
+                      <div>
+                        <div className="rule-row-title">Web Search</div>
+                        <div className="rule-row-desc">Condition: Any Request</div>
+                      </div>
+                      <div className="status-indicator">
+                        <div className="status-dot yellow"></div> Requires Approval
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
@@ -625,6 +641,54 @@ export default function Home() {
     );
   };
 
+  const SessionsScreen = () => {
+    return (
+      <motion.div 
+        className="dashboard-wrapper"
+        initial={{ opacity: 0, scale: 0.98, filter: 'blur(10px)' }}
+        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+        transition={{ duration: 0.4 }}
+      >
+        <Appbar onLogoClick={() => handleNavigate('landing')} />
+        
+        <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
+          <div className="dash-title" style={{ paddingBottom: '2rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <button className="icon-btn" onClick={() => handleNavigate('app')}><ChevronLeft size={20} /></button>
+              <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-color)' }}>Past Sessions</h1>
+            </div>
+          </div>
+          
+          <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '1rem' }}>
+            {[
+              { id: 1, title: 'System upgrade and dependency check', date: 'Today, 10:24 AM', tokens: '14.2k', risk: '14.5%', status: 'Blocked Actions' },
+              { id: 2, title: 'Analyze frontend bundle size', date: 'Yesterday, 4:12 PM', tokens: '8.4k', risk: '2.1%', status: 'Completed' },
+              { id: 3, title: 'Refactor user authentication flow', date: 'Jul 19, 2:45 PM', tokens: '32.1k', risk: '8.4%', status: 'Completed' },
+              { id: 4, title: 'Scan home directory for large files', date: 'Jul 18, 9:15 AM', tokens: '4.2k', risk: '1.2%', status: 'Completed' },
+            ].map(session => (
+              <div key={session.id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-color)' }}>{session.title}</h3>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{session.date}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>{session.tokens}</span></div>
+                    <div className="telemetry-chip"><TriangleAlert size={14} color="var(--danger-color)" /> <span>{session.risk}</span></div>
+                  </div>
+                  <div className="status-indicator">
+                    {session.status === 'Completed' ? <><div className="status-dot green"></div> {session.status}</> : <><div className="status-dot red"></div> {session.status}</>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
   const TransitionScreen = () => (
     <motion.div 
       key="transition"
@@ -663,6 +727,7 @@ export default function Home() {
     <AnimatePresence mode="wait">
       {screen === 'landing' && <LandingScreen key="landing" />}
       {screen === 'app' && <AppScreen key="app" />}
+      {screen === 'sessions' && <SessionsScreen key="sessions" />}
       {screen === 'transition' && <TransitionScreen key="transition" />}
     </AnimatePresence>
   );

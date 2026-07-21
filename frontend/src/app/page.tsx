@@ -8,6 +8,9 @@ import {
   Cpu, Terminal, Search, Send, Plus, X, Globe, FileText, Sun, Moon,
   MessageSquare, Sparkles, Code
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 gsap.registerPlugin(useGSAP);
 
@@ -34,7 +37,17 @@ export default function Home() {
     }
   }, [isDarkMode]);
 
-  const Appbar = ({ onLogoClick }: { onLogoClick: () => void }) => (
+  return (
+    <AnimatePresence mode="wait">
+      {screen === 'landing' && <LandingScreen key="landing" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'app' && <AppScreen key="app" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'sessions' && <SessionsScreen key="sessions" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'transition' && <TransitionScreen key="transition" />}
+    </AnimatePresence>
+  );
+}
+
+const Appbar = ({ onLogoClick, isDarkMode, setIsDarkMode }: any) => (
     <nav className="app-nav">
       <motion.div 
         className="logo" 
@@ -59,7 +72,7 @@ export default function Home() {
     </nav>
   );
 
-  const LandingScreen = () => {
+const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     return (
       <motion.div 
         className="landing-wrapper"
@@ -70,7 +83,7 @@ export default function Home() {
       >
         {/* Navigation */}
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
-          <Appbar onLogoClick={() => handleNavigate('landing')} />
+          <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
         </div>
         
         {/* HERO SECTION */}
@@ -324,11 +337,13 @@ export default function Home() {
     );
   };
 
-  const AppScreen = () => {
+const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     const chatContainer = useRef<HTMLDivElement>(null);
     const [isLeftOpen, setIsLeftOpen] = useState(true);
     const [isRightOpen, setIsRightOpen] = useState(true);
-    const [selectedModel, setSelectedModel] = useState('llama-3-8b-local');
+    const [selectedModel, setSelectedModel] = useState('');
+    const [availableModels, setAvailableModels] = useState<any[]>([]);
+    const [showInstallAlert, setShowInstallAlert] = useState(false);
     const [chatMode, setChatMode] = useState('Ask');
     const [inputLimitIdx, setInputLimitIdx] = useState(4);
     const [outputLimitIdx, setOutputLimitIdx] = useState(2);
@@ -346,6 +361,59 @@ export default function Home() {
     const [ruleCondition, setRuleCondition] = useState('Contains Command');
     const [ruleTarget, setRuleTarget] = useState('');
     const [ruleAction, setRuleAction] = useState('Block');
+
+    const [messages, setMessages] = useState<any[]>([]);
+    const [inputValue, setInputValue] = useState('');
+    const [systemPrompt, setSystemPrompt] = useState('You are Orb, a local AI assistant. Ensure all actions are safe and approved.');
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+      const fetchModels = async () => {
+        try {
+          const response = await fetch('http://localhost:3001/api/models');
+          if (!response.ok) {
+            setShowInstallAlert(true);
+            return;
+          }
+          const data = await response.json();
+          if (data.models && data.models.length > 0) {
+            setAvailableModels(data.models);
+            setSelectedModel(data.models[0].name);
+          } else {
+            setShowInstallAlert(true);
+          }
+        } catch (error) {
+          setShowInstallAlert(true);
+        }
+      };
+      fetchModels();
+    }, []);
+
+    const handleSendMessage = async () => {
+      if (!inputValue.trim()) return;
+      const userMessage = { role: 'user', content: inputValue, type: 'normal' };
+      setMessages(prev => [...prev, userMessage]);
+      setInputValue('');
+      setIsLoading(true);
+
+      try {
+        const response = await fetch('http://localhost:3001/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: inputValue, systemPrompt: systemPrompt, model: selectedModel })
+        });
+        const data = await response.json();
+        if (data.response) {
+          setMessages(prev => [...prev, { role: 'system', content: data.response, type: 'normal' }]);
+        } else {
+          setMessages(prev => [...prev, { role: 'system', content: 'Error: Could not get response.', type: 'normal' }]);
+        }
+      } catch (error) {
+        setMessages(prev => [...prev, { role: 'system', content: 'Network error. Make sure the backend is running.', type: 'normal' }]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
     useGSAP(() => {
       gsap.from('.msg-anim', {
@@ -367,7 +435,43 @@ export default function Home() {
         exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
-        <Appbar onLogoClick={() => handleNavigate('landing')} />
+        <AnimatePresence>
+          {showInstallAlert && (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)' }}
+            >
+              <motion.div 
+                initial={{ y: 50, opacity: 0, scale: 0.9 }} 
+                animate={{ y: 0, opacity: 1, scale: 1 }} 
+                exit={{ y: 20, opacity: 0, scale: 0.9 }} 
+                className="glass-panel" 
+                style={{ maxWidth: '500px', width: '90%', padding: '2.5rem', textAlign: 'center', background: 'var(--panel-bg)', position: 'relative' }}
+              >
+                <button className="icon-btn" onClick={() => setShowInstallAlert(false)} style={{ position: 'absolute', top: '1rem', right: '1rem' }}><X size={20} /></button>
+                <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--danger-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+                  <TriangleAlert size={32} color="#fff" />
+                </div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-color)' }}>No Local Models Detected</h2>
+                <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '2rem' }}>
+                  Orb requires a local model running via Ollama to function securely. We couldn't detect any installed models or Ollama might not be running.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <a href="https://ollama.com/download" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                    <button className="btn-pill" style={{ width: '100%', padding: '1rem' }}>Download Ollama</button>
+                  </a>
+                  <div style={{ padding: '1rem', background: 'var(--bg-color)', borderRadius: '12px', border: '1px solid var(--panel-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <code style={{ fontSize: '0.875rem', color: 'var(--text-color)' }}>ollama run llama3.1</code>
+                    <button className="icon-btn" onClick={() => navigator.clipboard.writeText('ollama run llama3.1')}><FileText size={16} /></button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
         
         <div className="dashboard-content">
           {/* Left Panel */}
@@ -382,7 +486,7 @@ export default function Home() {
             style={{ overflow: 'hidden' }}
           >
             {isLeftOpen ? (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ minWidth: 290, display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ minWidth: 290, display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%', overflowY: 'auto', paddingRight: '0.5rem' }}>
                 <div className="dash-title">
                   Telemetry & Guardrails
                   <button className="icon-btn" onClick={() => setIsLeftOpen(false)}>
@@ -448,6 +552,30 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+
+                <div className="stat-item glass-panel" style={{ marginTop: 'auto' }}>
+                  <div className="stat-item-header" style={{ marginBottom: '1rem' }}><span>Behavioral Guardrails</span></div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>System Pre-Prompt (System Prompt)</div>
+                    <textarea 
+                      value={systemPrompt}
+                      onChange={(e) => setSystemPrompt(e.target.value)}
+                      placeholder="e.g., Do not answer questions outside of linux system administration."
+                      style={{ 
+                        width: '100%', 
+                        minHeight: '80px', 
+                        background: 'var(--bg-color)', 
+                        border: '1px solid var(--panel-border)', 
+                        borderRadius: '8px', 
+                        padding: '0.75rem', 
+                        color: 'var(--text-color)', 
+                        fontSize: '0.875rem',
+                        resize: 'vertical',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+                </div>
               </motion.div>
             ) : (
               <motion.button 
@@ -467,6 +595,17 @@ export default function Home() {
             <motion.div layout="position" className="dash-title" style={{ paddingBottom: '1.5rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                 <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>Hello Hari</span>
+                <select 
+                  value={selectedModel} 
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  style={{ background: 'var(--panel-bg)', color: 'var(--text-color)', border: '1px solid var(--panel-border)', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.875rem', outline: 'none' }}
+                >
+                  {availableModels.length > 0 ? availableModels.map((m: any) => (
+                    <option key={m.name} value={m.name}>{m.name}</option>
+                  )) : (
+                    <option value="">No models found</option>
+                  )}
+                </select>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   <div className="telemetry-chip"><Shield size={14} color="var(--success-color)" /> <span>1,204 Actions Blocked</span></div>
                   <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>42.1k Tokens Saved</span></div>
@@ -479,19 +618,76 @@ export default function Home() {
             
             <div className="chat-container" ref={chatContainer}>
               <div className="chat-history">
-                <div className="msg msg-ai msg-anim"><strong>Orb Subsystem:</strong> Connection established to local inference engine. Active policies injected. How can I assist?</div>
-                <div className="msg msg-user msg-anim">Can you run a system update and then scan my documents folder for sensitive information?</div>
-                <div className="msg msg-ai msg-anim">
-                  <strong>Local LLM:</strong> Acknowledged. I have prepared the command to execute a system update via your package manager.
-                  <div className="action-card">
-                    <h4><ShieldAlert size={18} /> Action Blocked by Orb Policy</h4>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>The agent attempted to execute `sudo apt upgrade`. This requires explicit human approval under the "System Modifications" rule.</p>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                      <button style={{ background: 'var(--danger-color)', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Deny Action</button>
-                      <button style={{ background: 'transparent', color: 'var(--danger-color)', padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Approve (Once)</button>
+                {messages.length === 0 && (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.7, minHeight: '300px' }}>
+                    <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--bg-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid var(--panel-border)' }}>
+                      <Sparkles size={32} color="var(--accent-color)" />
                     </div>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-color)', marginBottom: '0.5rem' }}>Start a conversation</h3>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Ask a question or command your local model.</p>
                   </div>
-                </div>
+                )}
+                {messages.map((msg, idx) => (
+                  <div key={idx} className={`msg ${msg.role === 'user' ? 'msg-user' : 'msg-ai'} msg-anim`}>
+                    {msg.role === 'system' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                           <Sparkles size={12} color="#fff" />
+                        </div>
+                        <strong>{selectedModel}</strong>
+                      </div>
+                    )}
+                    <div className="msg-content">
+                      {msg.role === 'system' ? (
+                        <ReactMarkdown
+                          components={{
+                            code({node, inline, className, children, ...props}: any) {
+                              const match = /language-(\w+)/.exec(className || '');
+                              return !inline && match ? (
+                                <SyntaxHighlighter
+                                  style={vscDarkPlus}
+                                  language={match[1]}
+                                  PreTag="div"
+                                  customStyle={{ borderRadius: '8px', margin: '1rem 0' }}
+                                  {...props}
+                                >
+                                  {String(children).replace(/\n$/, '')}
+                                </SyntaxHighlighter>
+                              ) : (
+                                <code style={{ background: 'rgba(0,0,0,0.1)', padding: '0.2rem 0.4rem', borderRadius: '4px', fontFamily: 'monospace' }} className={className} {...props}>
+                                  {children}
+                                </code>
+                              )
+                            }
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      ) : msg.content}
+                    </div>
+                    {msg.type === 'blocked' && (
+                      <div className="action-card">
+                        <h4><ShieldAlert size={18} /> Action Blocked by Orb Policy</h4>
+                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>{msg.reason}</p>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                          <button style={{ background: 'var(--danger-color)', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Deny Action</button>
+                          <button style={{ background: 'transparent', color: 'var(--danger-color)', padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Approve (Once)</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {isLoading && (
+                  <div className="msg msg-ai msg-anim">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                         <Sparkles size={12} color="#fff" />
+                      </div>
+                      <strong>{selectedModel}</strong>
+                    </div>
+                    <div className="msg-content">Thinking...</div>
+                  </div>
+                )}
               </div>
               
               <motion.div 
@@ -514,8 +710,16 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="chat-input-row">
-                  <input type="text" placeholder="Command the local AI..." />
-                  <button className="send-btn"><Send size={18} /></button>
+                  <input 
+                    type="text" 
+                    placeholder="Command the local AI..." 
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  />
+                  <button className="send-btn" onClick={handleSendMessage} disabled={isLoading}>
+                    <Send size={18} />
+                  </button>
                 </div>
               </motion.div>
             </div>
@@ -641,7 +845,7 @@ export default function Home() {
     );
   };
 
-  const SessionsScreen = () => {
+const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     return (
       <motion.div 
         className="dashboard-wrapper"
@@ -650,7 +854,7 @@ export default function Home() {
         exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
         transition={{ duration: 0.4 }}
       >
-        <Appbar onLogoClick={() => handleNavigate('landing')} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
         
         <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
           <div className="dash-title" style={{ paddingBottom: '2rem' }}>
@@ -722,13 +926,3 @@ export default function Home() {
       <div className="retro-stripes-scroll-right" style={{ height: '32px', width: '100%' }} />
     </motion.div>
   );
-
-  return (
-    <AnimatePresence mode="wait">
-      {screen === 'landing' && <LandingScreen key="landing" />}
-      {screen === 'app' && <AppScreen key="app" />}
-      {screen === 'sessions' && <SessionsScreen key="sessions" />}
-      {screen === 'transition' && <TransitionScreen key="transition" />}
-    </AnimatePresence>
-  );
-}

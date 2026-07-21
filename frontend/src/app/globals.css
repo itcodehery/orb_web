@@ -424,6 +424,8 @@ body.dark-mode .hero-beam {
 .chat-container {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   height: 100%;
   position: relative;
   background: var(--panel-bg);
@@ -448,13 +450,26 @@ body.dark-mode .hero-beam {
 }
 .msg-ai {
   align-self: flex-start;
-  color: var(--text-muted);
+  color: var(--text-color);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  padding: 1rem 1.5rem;
+  border-radius: 4px 20px 20px 20px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
 }
 .msg-ai strong {
   color: var(--text-color);
   font-weight: 600;
-  display: block;
-  margin-bottom: 0.25rem;
+}
+.msg-content {
+  color: var(--text-color);
+  line-height: 1.6;
+}
+.msg-content p:last-child {
+  margin-bottom: 0;
+}
+.msg-content p:first-child {
+  margin-top: 0;
 }
 .msg-user {
   align-self: flex-end;

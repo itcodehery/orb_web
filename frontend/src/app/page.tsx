@@ -15,11 +15,11 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 gsap.registerPlugin(useGSAP);
 
 export default function Home() {
-  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'transition'>('landing');
-  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions'>('app');
+  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'transition'>('landing');
+  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api'>('app');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const handleNavigate = (target: 'landing' | 'app' | 'sessions') => {
+  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api') => {
     if (screen === target || screen === 'transition') return;
     setNextScreen(target);
     setScreen('transition');
@@ -42,12 +42,13 @@ export default function Home() {
       {screen === 'landing' && <LandingScreen key="landing" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'app' && <AppScreen key="app" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'sessions' && <SessionsScreen key="sessions" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'api' && <ApiScreen key="api" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'transition' && <TransitionScreen key="transition" />}
     </AnimatePresence>
   );
 }
 
-const Appbar = ({ onLogoClick, isDarkMode, setIsDarkMode }: any) => (
+const Appbar = ({ onLogoClick, onApiClick, isDarkMode, setIsDarkMode }: any) => (
   <nav className="app-nav">
     <motion.div
       className="logo"
@@ -62,6 +63,13 @@ const Appbar = ({ onLogoClick, isDarkMode, setIsDarkMode }: any) => (
       <span>Work</span>
       <span>About</span>
       <span>Info</span>
+      <button
+        onClick={onApiClick}
+        title="API Access"
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
+      >
+        <Code size={20} />
+      </button>
       <button
         onClick={() => setIsDarkMode(!isDarkMode)}
         style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
@@ -83,7 +91,7 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     >
       {/* Navigation */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
-        <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
       </div>
 
       {/* HERO SECTION */}
@@ -701,7 +709,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </motion.div>
         )}
       </AnimatePresence>
-      <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div className="dashboard-content">
         {/* Left Panel */}
@@ -1104,7 +1112,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
         <div className="dash-title" style={{ paddingBottom: '2rem' }}>
@@ -1137,6 +1145,46 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const baseUrl = 'http://localhost:3001/api/v1';
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyBaseUrl = () => {
+    navigator.clipboard.writeText(baseUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <motion.div
+      className="dashboard-wrapper"
+      initial={{ opacity: 0, scale: 0.98, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+      transition={{ duration: 0.4 }}
+    >
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+
+      <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="dash-title" style={{ paddingBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button className="icon-btn" onClick={() => handleNavigate('app')}><ChevronLeft size={20} /></button>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-color)' }}>API Access</h1>
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Base URL</div>
+            <code style={{ fontSize: '1rem', color: 'var(--text-color)' }}>{baseUrl}</code>
+          </div>
+          <button className="icon-btn" onClick={handleCopyBaseUrl}>{copied ? 'Copied!' : <FileText size={16} />}</button>
         </div>
       </div>
     </motion.div>

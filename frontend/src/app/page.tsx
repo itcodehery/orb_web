@@ -470,22 +470,19 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const processChat = async (currentMessages: any[]) => {
     setIsLoading(true);
     try {
-      const activeToolsList = tools.filter(t => t.active).map(t => t.id);
-      const filteredOllamaTools = ollamaTools.filter(t => {
-        if (t.function.name === 'execute_bash' && !activeToolsList.includes('bash')) return false;
-        if (t.function.name === 'read_file' && !activeToolsList.includes('fs')) return false;
-        if (t.function.name === 'web_search' && !activeToolsList.includes('web')) return false;
-        return true;
-      });
+      const toolPolicies = policies.reduce((acc, p) => {
+        acc[p.condition] = p.status;
+        return acc;
+      }, {} as Record<string, string>);
 
       const response = await fetch('http://localhost:3001/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls })),
+          messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name })),
           systemPrompt: systemPrompt,
           model: selectedModel,
-          tools: filteredOllamaTools
+          toolPolicies
         })
       });
 
@@ -506,21 +503,11 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       setIsLoading(false); 
 
       let buffer = '';
+      let shouldContinueLoop = false;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          if (buffer.trim()) {
-            try {
-              const data = JSON.parse(buffer);
-              if (data.message) {
-                if (data.message.content) aiMessage.content += data.message.content;
-                if (data.message.tool_calls) aiMessage.tool_calls = data.message.tool_calls;
-              }
-            } catch (e) {}
-          }
-          break;
-        }
+        if (done) break;
         
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -530,40 +517,34 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           if (!line.trim()) continue;
           try {
             const data = JSON.parse(line);
-            if (data.message) {
-              if (data.message.content) {
-                aiMessage.content += data.message.content;
-              }
-              if (data.message.tool_calls) {
-                aiMessage.tool_calls = data.message.tool_calls;
-              }
+            
+            if (data.type === 'content_chunk') {
+              aiMessage.content += data.content;
+              setMessages([...nextMessages]);
+            } else if (data.type === 'tool_call_intent') {
+              aiMessage.tool_calls = data.toolCalls;
+              setMessages([...nextMessages]);
+            } else if (data.type === 'tool_result') {
+              const toolMsg = { role: 'tool', name: data.name, content: data.result, type: 'tool_result' };
+              nextMessages = [...nextMessages, toolMsg];
+              setMessages(nextMessages);
+            } else if (data.type === 'requires_approval') {
+              setPendingToolCall(data.toolCall);
+              // Backend paused execution. We break out of the stream reader.
+              return; 
+            } else if (data.type === 'error') {
+              console.error('Agent error:', data.error);
+            } else if (data.type === 'done') {
+              // Agent loop finished natively
             }
           } catch (e) {
             console.error('Error parsing NDJSON line:', line, e);
           }
         }
-        
-        nextMessages = [...currentMessages, { ...aiMessage }];
-        setMessages(nextMessages);
       }
 
-      // Stream fully received. Handle tools if present.
-      if (aiMessage.tool_calls && (aiMessage.tool_calls as any[]).length > 0) {
-        const toolCall = (aiMessage.tool_calls as any[])[0];
-        const toolName = toolCall.function.name;
-        const status = getPolicyStatus(toolName);
-
-        if (status === 'Blocked') {
-          const toolMsg = { role: 'tool', content: `Action Blocked: Policy enforces blocking for ${toolName}.`, type: 'blocked', reason: `Orb blocked the use of ${toolName}` };
-          nextMessages = [...nextMessages, toolMsg];
-          setMessages(nextMessages);
-          processChat(nextMessages);
-        } else if (status === 'Requires Approval') {
-          setPendingToolCall(toolCall);
-        } else {
-          await executeToolAndContinue(toolCall, nextMessages);
-        }
-      }
+      // If the stream ended and we had tools executed (but not paused), we need to check if we should continue
+      // Actually, the backend loop handles continuing. So when the stream ends normally, it means 'done'.
     } catch (error) {
       console.error(error);
       setMessages(prev => [...prev, { role: 'system', content: 'Network error communicating with backend.', type: 'normal' }]);
@@ -583,6 +564,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       const toolMsg = { role: 'tool', content: toolData.result, type: 'tool_result', name: toolCall.function.name };
       const nextMessages = [...currentMessages, toolMsg];
       setMessages(nextMessages);
+      // Resume the agent loop by calling chat again
       processChat(nextMessages);
     } catch (error) {
       console.error(error);

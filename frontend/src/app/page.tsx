@@ -1161,6 +1161,53 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const [keys, setKeys] = useState<any[]>([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyTools, setNewKeyTools] = useState({ fs: false, bash: false, web: false });
+  const [createdKey, setCreatedKey] = useState<any>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const fetchKeys = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/keys');
+      const data = await res.json();
+      setKeys(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    fetchKeys();
+  }, []);
+
+  const handleCreateKey = async () => {
+    if (!newKeyName.trim()) return;
+    setIsCreating(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newKeyName, tools: newKeyTools }),
+      });
+      const data = await res.json();
+      setCreatedKey(data);
+      setNewKeyName('');
+      setNewKeyTools({ fs: false, bash: false, web: false });
+      fetchKeys();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleRevoke = async (id: number) => {
+    if (!window.confirm('Revoke this API key? This cannot be undone.')) return;
+    await fetch(`http://localhost:3001/api/keys/${id}`, { method: 'DELETE' });
+    fetchKeys();
+  };
+
   return (
     <motion.div
       className="dashboard-wrapper"
@@ -1185,6 +1232,56 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             <code style={{ fontSize: '1rem', color: 'var(--text-color)' }}>{baseUrl}</code>
           </div>
           <button className="icon-btn" onClick={handleCopyBaseUrl}>{copied ? 'Copied!' : <FileText size={16} />}</button>
+        </div>
+
+        {createdKey && (
+          <div className="glass-panel" style={{ padding: '1.5rem', border: '1px solid var(--warning-color)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <strong style={{ color: 'var(--warning-color)' }}>New key created — copy it now, it won't be shown again</strong>
+              <button className="icon-btn" onClick={() => setCreatedKey(null)}><X size={16} /></button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-color)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
+              <code>{createdKey.key}</code>
+              <button className="icon-btn" onClick={() => navigator.clipboard.writeText(createdKey.key)}><FileText size={16} /></button>
+            </div>
+          </div>
+        )}
+
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Create New Key</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <input type="text" className="form-input" placeholder="Key name, e.g. my-script" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} />
+            <div style={{ display: 'flex', gap: '1.5rem' }}>
+              {(['fs', 'bash', 'web'] as const).map(flag => (
+                <label key={flag} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-color)' }}>
+                  <input type="checkbox" checked={newKeyTools[flag]} onChange={(e) => setNewKeyTools({ ...newKeyTools, [flag]: e.target.checked })} />
+                  {flag === 'fs' ? 'Local FS' : flag === 'bash' ? 'Bash Exec' : 'Web Search'}
+                </label>
+              ))}
+            </div>
+            <button className="btn-pill" style={{ alignSelf: 'flex-start', padding: '0.75rem 1.5rem' }} onClick={handleCreateKey} disabled={!newKeyName.trim() || isCreating}>Create Key</button>
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Active Keys</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {keys.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No keys yet.</div>}
+            {keys.map(k => (
+              <div key={k.id} className="rule-row">
+                <div>
+                  <div className="rule-row-title">{k.name} <code style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.maskedKey}</code></div>
+                  <div className="rule-row-desc">
+                    {Object.entries(k.tools).filter(([, v]) => v).map(([t]) => t).join(', ') || 'no tools enabled'}
+                    {k.revoked_at ? ' · revoked' : ''}
+                  </div>
+                </div>
+                {!k.revoked_at && (
+                  <button className="icon-btn" onClick={() => handleRevoke(k.id)}><X size={16} /></button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </motion.div>

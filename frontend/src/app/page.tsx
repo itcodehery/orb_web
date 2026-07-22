@@ -429,6 +429,32 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const [ruleTarget, setRuleTarget] = useState('');
   const [ruleAction, setRuleAction] = useState('Block');
 
+  const conditionToTool: Record<string, string> = {
+    'Contains Command': 'execute_bash',
+    'Modifies File Path': 'read_file',
+    'Network Outbound': 'web_search',
+  };
+  const actionToStatus: Record<string, string> = {
+    'Allow': 'Allowed',
+    'Block': 'Blocked',
+    'Require Approval': 'Requires Approval',
+  };
+
+  const handleSaveRule = () => {
+    if (!ruleTarget.trim()) return;
+    const newPolicy = {
+      id: `custom-${Date.now()}`,
+      title: `${ruleCondition}: ${ruleTarget}`,
+      condition: conditionToTool[ruleCondition],
+      status: actionToStatus[ruleAction],
+    };
+    setPolicies([...policies, newPolicy]);
+    setRuleTarget('');
+    setRuleCondition('Contains Command');
+    setRuleAction('Block');
+    setIsAddingRule(false);
+  };
+
   const [messages, setMessages] = useState<any[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('You are Orb, a local AI assistant. Ensure all actions are safe and approved.');
@@ -1007,7 +1033,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       </select>
                     </div>
 
-                    <button className="btn-pill" style={{ width: '100%', padding: '0.75rem', fontSize: '0.875rem', marginTop: '0.5rem' }}>Save Policy Rule</button>
+                    <button className="btn-pill" style={{ width: '100%', padding: '0.75rem', fontSize: '0.875rem', marginTop: '0.5rem' }} onClick={handleSaveRule} disabled={!ruleTarget.trim()}>Save Policy Rule</button>
                   </motion.div>
                 ) : (
                   <button

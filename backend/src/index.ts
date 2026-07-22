@@ -7,6 +7,7 @@ import cors from 'cors';
 import chatRoutes from './api/chat.route';
 import modelsRoutes from './api/models.route';
 import systemRoutes from './api/system.route';
+import keysRoutes from './api/keys.route';
 import { initDb } from './db/init';
 
 const app = express();
@@ -18,6 +19,7 @@ app.use(express.json());
 app.use('/api', chatRoutes);
 app.use('/api', modelsRoutes);
 app.use('/api', systemRoutes);
+app.use('/api', keysRoutes);
 
 initDb();
 

@@ -406,6 +406,8 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const [chatMode, setChatMode] = useState('Ask');
   const [inputLimitIdx, setInputLimitIdx] = useState(4);
   const [outputLimitIdx, setOutputLimitIdx] = useState(2);
+  const [performanceMode, setPerformanceMode] = useState<'low' | 'high'>('high');
+  const userSetPerfModeRef = useRef(false);
   const hallucinationRisk = 14.5;
   const tokenPresets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 128000];
 
@@ -480,6 +482,20 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       }
     };
     fetchModels();
+
+    const fetchSystemInfo = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/api/system-info');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!userSetPerfModeRef.current && (data.recommendedMode === 'low' || data.recommendedMode === 'high')) {
+          setPerformanceMode(data.recommendedMode);
+        }
+      } catch (error) {
+        // keep default 'high' if system-info can't be reached
+      }
+    };
+    fetchSystemInfo();
   }, []);
 
   const ollamaTools = [
@@ -508,7 +524,8 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name })),
           systemPrompt: systemPrompt,
           model: selectedModel,
-          toolPolicies
+          toolPolicies,
+          performanceMode
         })
       });
 
@@ -741,6 +758,22 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       <div style={{ fontSize: '1rem', fontWeight: 600 }}>{tokenPresets[outputLimitIdx]}</div>
                     </div>
                     <input type="range" className="range-slider" min={0} max={tokenPresets.length - 1} value={outputLimitIdx} onChange={(e) => setOutputLimitIdx(Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                      <Cpu size={14} style={{ display: 'inline', marginRight: '6px' }} /> Performance Mode
+                    </div>
+                    <div className="mode-switcher" style={{ background: 'var(--bg-color)', border: '1px solid var(--panel-border)', borderRadius: '99px', padding: '2px' }}>
+                      {(['low', 'high'] as const).map(m => (
+                        <button
+                          key={m}
+                          className={`mode-btn ${performanceMode === m ? 'active' : ''}`}
+                          onClick={() => { userSetPerfModeRef.current = true; setPerformanceMode(m); }}
+                        >
+                          {m === 'low' ? 'Low' : 'High'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

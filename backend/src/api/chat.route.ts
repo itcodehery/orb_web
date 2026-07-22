@@ -6,6 +6,7 @@ import { ToolExecutor } from '../agent/ToolExecutor';
 import { BashTool } from '../tools/BashTool';
 import { FsTool } from '../tools/FsTool';
 import { WebSearchTool } from '../tools/WebSearchTool';
+import { resolvePerformanceMode } from '../llm/performanceModes';
 
 const router = Router();
 
@@ -19,14 +20,15 @@ const executor = new ToolExecutor(registry);
 
 router.post('/chat', async (req: Request, res: Response) => {
   try {
-    const { messages, model = 'llama3.1', systemPrompt, toolPolicies } = req.body;
+    const { messages, model = 'llama3.1', systemPrompt, toolPolicies, performanceMode } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
       res.status(400).json({ error: 'Messages array is required' });
       return;
     }
 
-    const llm = new Ollama(model);
+    const mode = resolvePerformanceMode(performanceMode);
+    const llm = new Ollama(model, mode);
     const agent = new Agent(llm, registry, executor);
 
     res.setHeader('Content-Type', 'application/x-ndjson');
@@ -45,7 +47,7 @@ router.post('/chat', async (req: Request, res: Response) => {
       res.write(JSON.stringify(chunk) + '\n');
     };
 
-    await agent.run(messages, systemPrompt, streamCallback, getPolicyStatus);
+    await agent.run(messages, systemPrompt, streamCallback, getPolicyStatus, mode);
     
     res.end();
   } catch (error: any) {

@@ -1208,6 +1208,22 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     fetchKeys();
   };
 
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  const fetchAuditLogs = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/audit-logs?limit=50');
+      const data = await res.json();
+      setAuditLogs(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    fetchAuditLogs();
+  }, []);
+
   return (
     <motion.div
       className="dashboard-wrapper"
@@ -1279,6 +1295,29 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                 {!k.revoked_at && (
                   <button className="icon-btn" onClick={() => handleRevoke(k.id)}><X size={16} /></button>
                 )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div className="dash-title-small">Recent API Activity</div>
+            <button className="icon-btn" onClick={fetchAuditLogs}>Refresh</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {auditLogs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No API activity yet.</div>}
+            {auditLogs.map(log => (
+              <div key={log.id} className="rule-row">
+                <div>
+                  <div className="rule-row-title">{log.key_name} → {log.endpoint}</div>
+                  <div className="rule-row-desc">
+                    {new Date(log.timestamp).toLocaleString()} · {JSON.parse(log.tool_calls || '[]').map((t: any) => t.function?.name).join(', ') || 'no tools'} · {log.latency_ms}ms
+                  </div>
+                </div>
+                <div className="status-indicator">
+                  <div className={`status-dot ${log.status_code === 200 ? 'green' : 'red'}`}></div> {log.status_code}
+                </div>
               </div>
             ))}
           </div>

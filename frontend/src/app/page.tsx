@@ -1208,6 +1208,14 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     fetchKeys();
   };
 
+  const generateRandomName = () => {
+    const adjectives = ['swift', 'cosmic', 'silent', 'amber', 'lunar', 'crimson', 'quantum', 'nimble'];
+    const nouns = ['falcon', 'orbit', 'ember', 'cipher', 'nebula', 'vector', 'pulse', 'raptor'];
+    const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+    const suffix = Math.floor(1000 + Math.random() * 9000);
+    setNewKeyName(`${pick(adjectives)}-${pick(nouns)}-${suffix}`);
+  };
+
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
   const fetchAuditLogs = async () => {
@@ -1266,7 +1274,10 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         <div className="glass-panel" style={{ padding: '1.5rem' }}>
           <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Create New Key</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <input type="text" className="form-input" placeholder="Key name, e.g. my-script" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} />
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input type="text" className="form-input" placeholder="Key name, e.g. my-script" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} style={{ flex: 1 }} />
+              <button className="icon-btn" title="Generate random name" onClick={generateRandomName}><Sparkles size={16} /></button>
+            </div>
             <div style={{ display: 'flex', gap: '1.5rem' }}>
               {(['fs', 'bash', 'web'] as const).map(flag => (
                 <label key={flag} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-color)' }}>

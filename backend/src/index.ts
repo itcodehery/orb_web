@@ -9,6 +9,7 @@ import modelsRoutes from './api/models.route';
 import systemRoutes from './api/system.route';
 import keysRoutes from './api/keys.route';
 import v1ModelsRoutes from './api/v1/models.route';
+import v1ChatRoutes from './api/v1/chat.route';
 import { initDb } from './db/init';
 
 const app = express();
@@ -22,6 +23,7 @@ app.use('/api', modelsRoutes);
 app.use('/api', systemRoutes);
 app.use('/api', keysRoutes);
 app.use('/api/v1', v1ModelsRoutes);
+app.use('/api/v1', v1ChatRoutes);
 
 initDb();
 

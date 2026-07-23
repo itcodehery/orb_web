@@ -6,7 +6,8 @@ import { registry, executor } from '../agent/sharedInstances';
 import { resolvePerformanceMode } from '../llm/performanceModes';
 import { requireAuth } from '../middleware/requireAuth';
 import { listMemories } from '../db/memories.repo';
-import { extractAndSaveMemories } from '../agent/memoryExtractor';
+import { getActiveSession, createActiveSession, upsertActiveMessages } from '../db/sessions.repo';
+import { analyzeChat } from '../agent/postChatAnalysis';
 
 const router = Router();
 
@@ -19,6 +20,10 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Messages array is required' });
       return;
     }
+
+    const session = getActiveSession(userId as string) || createActiveSession(userId as string);
+    const messageIndex = messages.length;
+    const requestStartedAt = Date.now();
 
     const existingFacts = listMemories(userId as string).map(m => m.content);
     const combinedSystemPrompt = existingFacts.length
@@ -51,9 +56,12 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
 
     if (finalReply) {
       const lastUserMessage = [...messages].reverse().find((m: any) => m.role === 'user');
+      const assistantMessage = { role: 'assistant', content: finalReply, totalMs: Date.now() - requestStartedAt };
+      upsertActiveMessages(userId as string, [...messages, assistantMessage]);
+
       if (lastUserMessage?.content) {
-        extractAndSaveMemories(userId as string, model, existingFacts, lastUserMessage.content, finalReply).catch(err => {
-          console.error('Memory extraction failed:', err);
+        analyzeChat(userId as string, model, session.id, messageIndex, existingFacts, lastUserMessage.content, finalReply).catch(err => {
+          console.error('Post-chat analysis failed:', err);
         });
       }
     }

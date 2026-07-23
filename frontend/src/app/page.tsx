@@ -15,11 +15,11 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 gsap.registerPlugin(useGSAP);
 
 export default function Home() {
-  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'transition'>('landing');
-  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions'>('app');
+  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'transition'>('landing');
+  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api'>('app');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const handleNavigate = (target: 'landing' | 'app' | 'sessions') => {
+  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api') => {
     if (screen === target || screen === 'transition') return;
     setNextScreen(target);
     setScreen('transition');
@@ -42,12 +42,13 @@ export default function Home() {
       {screen === 'landing' && <LandingScreen key="landing" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'app' && <AppScreen key="app" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'sessions' && <SessionsScreen key="sessions" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'api' && <ApiScreen key="api" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'transition' && <TransitionScreen key="transition" />}
     </AnimatePresence>
   );
 }
 
-const Appbar = ({ onLogoClick, isDarkMode, setIsDarkMode }: any) => (
+const Appbar = ({ onLogoClick, onApiClick, isDarkMode, setIsDarkMode }: any) => (
   <nav className="app-nav">
     <motion.div
       className="logo"
@@ -62,6 +63,13 @@ const Appbar = ({ onLogoClick, isDarkMode, setIsDarkMode }: any) => (
       <span>Work</span>
       <span>About</span>
       <span>Info</span>
+      <button
+        onClick={onApiClick}
+        title="API Access"
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
+      >
+        <Code size={20} />
+      </button>
       <button
         onClick={() => setIsDarkMode(!isDarkMode)}
         style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
@@ -83,7 +91,7 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     >
       {/* Navigation */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
-        <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
       </div>
 
       {/* HERO SECTION */}
@@ -406,6 +414,8 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const [chatMode, setChatMode] = useState('Ask');
   const [inputLimitIdx, setInputLimitIdx] = useState(4);
   const [outputLimitIdx, setOutputLimitIdx] = useState(2);
+  const [performanceMode, setPerformanceMode] = useState<'low' | 'high'>('high');
+  const userSetPerfModeRef = useRef(false);
   const hallucinationRisk = 14.5;
   const tokenPresets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 128000];
 
@@ -480,6 +490,20 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       }
     };
     fetchModels();
+
+    const fetchSystemInfo = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/api/system-info');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!userSetPerfModeRef.current && (data.recommendedMode === 'low' || data.recommendedMode === 'high')) {
+          setPerformanceMode(data.recommendedMode);
+        }
+      } catch (error) {
+        // keep default 'high' if system-info can't be reached
+      }
+    };
+    fetchSystemInfo();
   }, []);
 
   const ollamaTools = [
@@ -508,7 +532,8 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name })),
           systemPrompt: systemPrompt,
           model: selectedModel,
-          toolPolicies
+          toolPolicies,
+          performanceMode
         })
       });
 
@@ -684,7 +709,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </motion.div>
         )}
       </AnimatePresence>
-      <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div className="dashboard-content">
         {/* Left Panel */}
@@ -741,6 +766,22 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       <div style={{ fontSize: '1rem', fontWeight: 600 }}>{tokenPresets[outputLimitIdx]}</div>
                     </div>
                     <input type="range" className="range-slider" min={0} max={tokenPresets.length - 1} value={outputLimitIdx} onChange={(e) => setOutputLimitIdx(Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                      <Cpu size={14} style={{ display: 'inline', marginRight: '6px' }} /> Performance Mode
+                    </div>
+                    <div className="mode-switcher" style={{ background: 'var(--bg-color)', border: '1px solid var(--panel-border)', borderRadius: '99px', padding: '2px' }}>
+                      {(['low', 'high'] as const).map(m => (
+                        <button
+                          key={m}
+                          className={`mode-btn ${performanceMode === m ? 'active' : ''}`}
+                          onClick={() => { userSetPerfModeRef.current = true; setPerformanceMode(m); }}
+                        >
+                          {m === 'low' ? 'Low' : 'High'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1071,7 +1112,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
         <div className="dash-title" style={{ paddingBottom: '2rem' }}>
@@ -1104,6 +1145,193 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const baseUrl = 'http://localhost:3001/api/v1';
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyBaseUrl = () => {
+    navigator.clipboard.writeText(baseUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const [keys, setKeys] = useState<any[]>([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyTools, setNewKeyTools] = useState({ fs: false, bash: false, web: false });
+  const [createdKey, setCreatedKey] = useState<any>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const fetchKeys = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/keys');
+      const data = await res.json();
+      setKeys(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    fetchKeys();
+  }, []);
+
+  const handleCreateKey = async () => {
+    if (!newKeyName.trim()) return;
+    setIsCreating(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newKeyName, tools: newKeyTools }),
+      });
+      const data = await res.json();
+      setCreatedKey(data);
+      setNewKeyName('');
+      setNewKeyTools({ fs: false, bash: false, web: false });
+      fetchKeys();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleRevoke = async (id: number) => {
+    if (!window.confirm('Revoke this API key? This cannot be undone.')) return;
+    await fetch(`http://localhost:3001/api/keys/${id}`, { method: 'DELETE' });
+    fetchKeys();
+  };
+
+  const generateRandomName = () => {
+    const adjectives = ['swift', 'cosmic', 'silent', 'amber', 'lunar', 'crimson', 'quantum', 'nimble'];
+    const nouns = ['falcon', 'orbit', 'ember', 'cipher', 'nebula', 'vector', 'pulse', 'raptor'];
+    const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+    const suffix = Math.floor(1000 + Math.random() * 9000);
+    setNewKeyName(`${pick(adjectives)}-${pick(nouns)}-${suffix}`);
+  };
+
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  const fetchAuditLogs = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/audit-logs?limit=50');
+      const data = await res.json();
+      setAuditLogs(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    fetchAuditLogs();
+  }, []);
+
+  return (
+    <motion.div
+      className="dashboard-wrapper"
+      initial={{ opacity: 0, scale: 0.98, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+      transition={{ duration: 0.4 }}
+    >
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+
+      <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="dash-title" style={{ paddingBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button className="icon-btn" onClick={() => handleNavigate('app')}><ChevronLeft size={20} /></button>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-color)' }}>API Access</h1>
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Base URL</div>
+            <code style={{ fontSize: '1rem', color: 'var(--text-color)' }}>{baseUrl}</code>
+          </div>
+          <button className="icon-btn" onClick={handleCopyBaseUrl}>{copied ? 'Copied!' : <FileText size={16} />}</button>
+        </div>
+
+        {createdKey && (
+          <div className="glass-panel" style={{ padding: '1.5rem', border: '1px solid var(--warning-color)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <strong style={{ color: 'var(--warning-color)' }}>New key created — copy it now, it won't be shown again</strong>
+              <button className="icon-btn" onClick={() => setCreatedKey(null)}><X size={16} /></button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-color)', padding: '0.75rem 1rem', borderRadius: '8px' }}>
+              <code>{createdKey.key}</code>
+              <button className="icon-btn" onClick={() => navigator.clipboard.writeText(createdKey.key)}><FileText size={16} /></button>
+            </div>
+          </div>
+        )}
+
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Create New Key</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input type="text" className="form-input" placeholder="Key name, e.g. my-script" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} style={{ flex: 1 }} />
+              <button className="icon-btn" title="Generate random name" onClick={generateRandomName}><Sparkles size={16} /></button>
+            </div>
+            <div style={{ display: 'flex', gap: '1.5rem' }}>
+              {(['fs', 'bash', 'web'] as const).map(flag => (
+                <label key={flag} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-color)' }}>
+                  <input type="checkbox" checked={newKeyTools[flag]} onChange={(e) => setNewKeyTools({ ...newKeyTools, [flag]: e.target.checked })} />
+                  {flag === 'fs' ? 'Local FS' : flag === 'bash' ? 'Bash Exec' : 'Web Search'}
+                </label>
+              ))}
+            </div>
+            <button className="btn-pill" style={{ alignSelf: 'flex-start', padding: '0.75rem 1.5rem' }} onClick={handleCreateKey} disabled={!newKeyName.trim() || isCreating}>Create Key</button>
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Active Keys</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {keys.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No keys yet.</div>}
+            {keys.map(k => (
+              <div key={k.id} className="rule-row">
+                <div>
+                  <div className="rule-row-title">{k.name} <code style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.maskedKey}</code></div>
+                  <div className="rule-row-desc">
+                    {Object.entries(k.tools).filter(([, v]) => v).map(([t]) => t).join(', ') || 'no tools enabled'}
+                    {k.revoked_at ? ' · revoked' : ''}
+                  </div>
+                </div>
+                {!k.revoked_at && (
+                  <button className="icon-btn" onClick={() => handleRevoke(k.id)}><X size={16} /></button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div className="dash-title-small">Recent API Activity</div>
+            <button className="icon-btn" onClick={fetchAuditLogs}>Refresh</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {auditLogs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No API activity yet.</div>}
+            {auditLogs.map(log => (
+              <div key={log.id} className="rule-row">
+                <div>
+                  <div className="rule-row-title">{log.key_name} → {log.endpoint}</div>
+                  <div className="rule-row-desc">
+                    {new Date(log.timestamp).toLocaleString()} · {JSON.parse(log.tool_calls || '[]').map((t: any) => t.function?.name).join(', ') || 'no tools'} · {log.latency_ms}ms
+                  </div>
+                </div>
+                <div className="status-indicator">
+                  <div className={`status-dot ${log.status_code === 200 ? 'green' : 'red'}`}></div> {log.status_code}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </motion.div>

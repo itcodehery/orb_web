@@ -1,23 +1,29 @@
 import { LLM } from './LLM';
 import { Message, ToolSchema, LLMResponse, ToolCall } from '../types';
+import { PerformanceMode, PERFORMANCE_PROFILES, DEFAULT_PERFORMANCE_MODE } from './performanceModes';
 
 export class Ollama implements LLM {
   private baseUrl = 'http://localhost:11434';
   private model: string;
+  private performanceMode: PerformanceMode;
 
-  constructor(model: string = 'llama3.1') {
+  constructor(model: string = 'llama3.1', performanceMode: PerformanceMode = DEFAULT_PERFORMANCE_MODE) {
     this.model = model;
+    this.performanceMode = performanceMode;
   }
 
   async chat(messages: Message[], tools?: ToolSchema[], systemPrompt?: string): Promise<LLMResponse> {
     const systemMessage = systemPrompt ? [{ role: 'system', content: systemPrompt }] : [];
-    
+    const profile = PERFORMANCE_PROFILES[this.performanceMode];
+
     const requestBody: any = {
       model: this.model,
       messages: [...systemMessage, ...messages],
       stream: false,
+      options: profile.options,
+      keep_alive: profile.keepAlive,
     };
-    
+
     if (tools && tools.length > 0) {
       requestBody.tools = tools;
     }
@@ -43,13 +49,16 @@ export class Ollama implements LLM {
 
   async chatStream(messages: Message[], tools?: ToolSchema[], systemPrompt?: string): Promise<NodeJS.ReadableStream> {
     const systemMessage = systemPrompt ? [{ role: 'system', content: systemPrompt }] : [];
-    
+    const profile = PERFORMANCE_PROFILES[this.performanceMode];
+
     const requestBody: any = {
       model: this.model,
       messages: [...systemMessage, ...messages],
       stream: true,
+      options: profile.options,
+      keep_alive: profile.keepAlive,
     };
-    
+
     if (tools && tools.length > 0) {
       requestBody.tools = tools;
     }

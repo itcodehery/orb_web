@@ -2,6 +2,7 @@ import { LLM } from '../llm/LLM';
 import { ToolRegistry } from '../tools/registry';
 import { ToolExecutor } from './ToolExecutor';
 import { Message, ToolCall } from '../types';
+import { PerformanceMode, PERFORMANCE_PROFILES } from '../llm/performanceModes';
 
 export class Agent {
   constructor(
@@ -17,9 +18,15 @@ export class Agent {
     messages: Message[],
     systemPrompt: string,
     streamCallback: (chunk: any) => void,
-    getPolicyStatus: (toolName: string) => string
+    getPolicyStatus: (toolName: string) => string,
+    performanceMode: PerformanceMode = 'high'
   ) {
     let currentMessages = [...messages];
+
+    const { maxHistoryMessages } = PERFORMANCE_PROFILES[performanceMode];
+    if (maxHistoryMessages && currentMessages.length > maxHistoryMessages) {
+      currentMessages = currentMessages.slice(-maxHistoryMessages);
+    }
 
     while (true) {
       const responseStream = await this.llm.chatStream(

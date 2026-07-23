@@ -21,6 +21,14 @@ const PERFORMANCE_PROFILE_INFO: Record<'low' | 'high', { summary: string; ctxSiz
   high: { summary: '8K context · unlimited response · full history · model stays loaded 30m idle', ctxSize: 8192 },
 };
 
+// Icons aren't JSON-serializable, so persisted session settings only ever carry
+// { id, name, active } — this map reconstructs the icon by id after hydration.
+const DEFAULT_TOOLS = [
+  { id: 'fs', name: 'Local FS', icon: <FileText size={14} /> },
+  { id: 'bash', name: 'Bash Exec', icon: <Terminal size={14} /> },
+  { id: 'web', name: 'Web Search', icon: <Globe size={14} /> },
+];
+
 export default function Home() {
   const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'transition'>('landing');
   const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory'>('app');
@@ -448,11 +456,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const hallucinationRisk = 14.5;
   const tokenPresets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 128000];
 
-  const [tools, setTools] = useState([
-    { id: 'fs', name: 'Local FS', active: true, icon: <FileText size={14} /> },
-    { id: 'bash', name: 'Bash Exec', active: true, icon: <Terminal size={14} /> },
-    { id: 'web', name: 'Web Search', active: true, icon: <Globe size={14} /> }
-  ]);
+  const [tools, setTools] = useState(DEFAULT_TOOLS.map(t => ({ ...t, active: true })));
   const toggleTool = (id: string) => setTools(tools.map(t => t.id === id ? { ...t, active: !t.active } : t));
 
   const [policies, setPolicies] = useState([
@@ -498,6 +502,67 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const [inputValue, setInputValue] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('You are Orb, a local AI assistant. Ensure all actions are safe and approved.');
   const [isLoading, setIsLoading] = useState(false);
+  const hasHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const hydrate = async () => {
+      try {
+        const res = await fetch('http://localhost:3001/api/sessions/active', { credentials: 'include' });
+        if (!res.ok) return;
+        const session = await res.json();
+        if (!session) return;
+
+        if (Array.isArray(session.messages)) setMessages(session.messages);
+        if (Array.isArray(session.policies) && session.policies.length) setPolicies(session.policies);
+
+        const s = session.settings || {};
+        if (s.systemPrompt) setSystemPrompt(s.systemPrompt);
+        if (s.selectedModel) setSelectedModel(s.selectedModel);
+        if (s.chatMode) setChatMode(s.chatMode);
+        if (s.performanceMode) {
+          setPerformanceMode(s.performanceMode);
+          userSetPerfModeRef.current = true;
+        }
+        if (typeof s.inputLimitIdx === 'number') setInputLimitIdx(s.inputLimitIdx);
+        if (typeof s.outputLimitIdx === 'number') setOutputLimitIdx(s.outputLimitIdx);
+        if (Array.isArray(s.tools) && s.tools.length) {
+          setTools(s.tools.map((t: any) => ({ ...t, icon: DEFAULT_TOOLS.find(d => d.id === t.id)?.icon })));
+        }
+      } catch (error) {
+        console.error('Failed to hydrate active session:', error);
+      } finally {
+        hasHydratedRef.current = true;
+      }
+    };
+    hydrate();
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current || !isSignedIn) return;
+
+    const timeoutId = setTimeout(() => {
+      fetch('http://localhost:3001/api/sessions/active', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          policies,
+          settings: {
+            systemPrompt,
+            selectedModel,
+            chatMode,
+            performanceMode,
+            inputLimitIdx,
+            outputLimitIdx,
+            tools: tools.map(({ id, name, active }) => ({ id, name, active })),
+          },
+        }),
+      }).catch(err => console.error('Failed to save session settings:', err));
+    }, 800);
+
+    return () => clearTimeout(timeoutId);
+  }, [policies, systemPrompt, selectedModel, chatMode, performanceMode, inputLimitIdx, outputLimitIdx, tools, isSignedIn]);
 
   useEffect(() => {
     const fetchModels = async () => {

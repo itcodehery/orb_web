@@ -339,6 +339,31 @@ body.dark-mode .hero-beam {
   color: var(--text-color);
 }
 
+.ctx-bar {
+  position: relative;
+  width: 72px;
+  height: 8px;
+  border-radius: 99px;
+  background: rgba(128, 128, 128, 0.2);
+  overflow: hidden;
+}
+.ctx-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  background-image: radial-gradient(circle, var(--success-color) 1px, transparent 1.4px);
+  background-size: 4px 4px;
+  background-color: color-mix(in srgb, var(--success-color) 35%, transparent);
+  transition: width 0.3s ease;
+}
+.ctx-bar-fill.ctx-warn {
+  background-image: radial-gradient(circle, var(--warning-color) 1px, transparent 1.4px);
+  background-color: color-mix(in srgb, var(--warning-color) 35%, transparent);
+}
+.ctx-bar-fill.ctx-danger {
+  background-image: radial-gradient(circle, var(--danger-color) 1px, transparent 1.4px);
+  background-color: color-mix(in srgb, var(--danger-color) 35%, transparent);
+}
+
 .subtle-btn {
   background: transparent;
   color: var(--accent-color);

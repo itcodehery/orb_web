@@ -15,9 +15,9 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 gsap.registerPlugin(useGSAP);
 
 // Mirrors backend/src/llm/performanceModes.ts PERFORMANCE_PROFILES — keep in sync if those change.
-const PERFORMANCE_PROFILE_INFO: Record<'low' | 'high', { summary: string }> = {
-  low: { summary: '2K context · 512 tok response cap · 12-message history · model unloads after 1m idle' },
-  high: { summary: '8K context · unlimited response · full history · model stays loaded 30m idle' },
+const PERFORMANCE_PROFILE_INFO: Record<'low' | 'high', { summary: string; ctxSize: number }> = {
+  low: { summary: '2K context · 512 tok response cap · 12-message history · model unloads after 1m idle', ctxSize: 2048 },
+  high: { summary: '8K context · unlimited response · full history · model stays loaded 30m idle', ctxSize: 8192 },
 };
 
 export default function Home() {
@@ -422,6 +422,8 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const [outputLimitIdx, setOutputLimitIdx] = useState(2);
   const [performanceMode, setPerformanceMode] = useState<'low' | 'high'>('high');
   const userSetPerfModeRef = useRef(false);
+  const [contextTokens, setContextTokens] = useState(0);
+  const ctxPercent = Math.min(100, Math.round((contextTokens / PERFORMANCE_PROFILE_INFO[performanceMode].ctxSize) * 100));
   const hallucinationRisk = 14.5;
   const tokenPresets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 128000];
 
@@ -599,7 +601,9 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             } else if (data.type === 'error') {
               console.error('Agent error:', data.error);
             } else if (data.type === 'done') {
-              // Agent loop finished natively
+              if (typeof data.contextTokens === 'number') {
+                setContextTokens(data.contextTokens);
+              }
             }
           } catch (e) {
             console.error('Error parsing NDJSON line:', line, e);
@@ -881,6 +885,18 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                 )}
               </select>
               <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <div className="telemetry-chip">
+                  <span>Ctx:</span>
+                  <div className="ctx-bar">
+                    <div
+                      className={`ctx-bar-fill ${ctxPercent >= 90 ? 'ctx-danger' : ctxPercent >= 70 ? 'ctx-warn' : ''}`}
+                      style={{ width: `${ctxPercent}%` }}
+                    />
+                  </div>
+                  <span style={{ color: ctxPercent >= 90 ? 'var(--danger-color)' : ctxPercent >= 70 ? 'var(--warning-color)' : 'var(--success-color)' }}>
+                    {ctxPercent}%
+                  </span>
+                </div>
                 <div className="telemetry-chip"><Shield size={14} color="var(--success-color)" /> <span>1,204 Actions Blocked</span></div>
                 <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>42.1k Tokens Saved</span></div>
               </div>

@@ -37,9 +37,10 @@ export class Agent {
 
       let fullContent = '';
       let toolCalls: ToolCall[] = [];
+      let contextTokens = 0;
 
       const decoder = new TextDecoder('utf-8');
-      
+
       // Async iterator over the web stream
       for await (const chunk of (responseStream as any)) {
         const decoded = decoder.decode(chunk, { stream: true });
@@ -60,6 +61,11 @@ export class Agent {
                 // but in streaming it might accumulate them. We will just capture the ones sent.
                 toolCalls = data.message.tool_calls;
               }
+            }
+            // Ollama's final chunk (done: true) reports how many tokens of the
+            // context window this turn actually used.
+            if (data.done && typeof data.prompt_eval_count === 'number') {
+              contextTokens = data.prompt_eval_count + (data.eval_count || 0);
             }
           } catch (e) {
             // Ignore parse errors on incomplete chunks
@@ -104,7 +110,7 @@ export class Agent {
       }
 
       // No tool calls, meaning the LLM has given its final answer
-      streamCallback({ type: 'done' });
+      streamCallback({ type: 'done', contextTokens });
       break;
     }
   }

@@ -6,7 +6,7 @@ import { useGSAP } from '@gsap/react';
 import {
   ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, Shield, Zap,
   Cpu, Terminal, Search, Send, Plus, X, Globe, FileText, Sun, Moon,
-  MessageSquare, Sparkles, Code, Clock, Brain
+  MessageSquare, Sparkles, Code, Clock, Brain, RefreshCw
 } from 'lucide-react';
 import { SignInButton, SignUpButton, Show, UserButton, useUser } from '@clerk/nextjs';
 import ReactMarkdown from 'react-markdown';
@@ -454,7 +454,6 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const userSetModelRef = useRef(false);
   const [contextTokens, setContextTokens] = useState(0);
   const ctxPercent = Math.min(100, Math.round((contextTokens / PERFORMANCE_PROFILE_INFO[performanceMode].ctxSize) * 100));
-  const hallucinationRisk = 14.5;
   const tokenPresets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 128000];
 
   const [tools, setTools] = useState(DEFAULT_TOOLS.map(t => ({ ...t, active: true })));
@@ -516,6 +515,32 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   };
 
   const [messages, setMessages] = useState<any[]>([]);
+
+  const messagesWithLatency = messages.filter((m: any) => m.role === 'assistant' && typeof m.totalMs === 'number');
+  const avgLatencyMs = messagesWithLatency.length
+    ? Math.round(messagesWithLatency.reduce((sum: number, m: any) => sum + m.totalMs, 0) / messagesWithLatency.length)
+    : null;
+
+  const messagesWithRisk = messages.filter((m: any) => m.role === 'assistant' && typeof m.riskScore === 'number');
+  const hallucinationRisk = messagesWithRisk.length
+    ? Math.round(messagesWithRisk.reduce((sum: number, m: any) => sum + m.riskScore, 0) / messagesWithRisk.length)
+    : 0;
+
+  const refreshActiveSession = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/sessions/active', { credentials: 'include' });
+      if (!res.ok) return;
+      const session = await res.json();
+      if (!Array.isArray(session?.messages)) return;
+      setMessages((prev: any[]) => prev.map((m, i) => {
+        const serverMsg = session.messages[i];
+        return serverMsg && typeof serverMsg.riskScore === 'number' ? { ...m, riskScore: serverMsg.riskScore } : m;
+      }));
+    } catch (error) {
+      console.error('Failed to refresh session:', error);
+    }
+  };
+
   const [inputValue, setInputValue] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('You are Orb, a local AI assistant. Ensure all actions are safe and approved.');
   const [isLoading, setIsLoading] = useState(false);
@@ -888,18 +913,36 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               <div className="stat-item glass-panel">
                 <div className="stat-item-header">
                   <span>Hallucination Risk</span>
-                  {hallucinationRisk > 10 ? (
-                    <motion.div className="status-indicator" animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-                      <div className="status-dot red"></div> High
-                    </motion.div>
-                  ) : (
-                    <div className="status-indicator">
-                      <div className="status-dot green"></div> Nominal
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button className="icon-btn" onClick={refreshActiveSession} title="Refresh"><RefreshCw size={14} /></button>
+                    {hallucinationRisk > 10 ? (
+                      <motion.div className="status-indicator" animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+                        <div className="status-dot red"></div> High
+                      </motion.div>
+                    ) : (
+                      <div className="status-indicator">
+                        <div className="status-dot green"></div> Nominal
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="stat-value-large" style={{ color: hallucinationRisk > 10 ? 'var(--danger-color)' : 'var(--text-color)' }}>
                   {hallucinationRisk}<span style={{ fontSize: '1.5rem', fontWeight: 500 }}>%</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  {messagesWithRisk.length ? `Avg over ${messagesWithRisk.length} scored ${messagesWithRisk.length === 1 ? 'reply' : 'replies'}` : 'Scores land ~1-2 min after each reply — hit refresh'}
+                </div>
+              </div>
+
+              <div className="stat-item glass-panel">
+                <div className="stat-item-header">
+                  <span>Avg Latency</span>
+                </div>
+                <div className="stat-value-large" style={{ color: 'var(--text-color)' }}>
+                  {avgLatencyMs != null ? (avgLatencyMs / 1000).toFixed(2) : '—'}<span style={{ fontSize: '1.5rem', fontWeight: 500 }}>s</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  {messagesWithLatency.length ? `Avg over ${messagesWithLatency.length} ${messagesWithLatency.length === 1 ? 'reply' : 'replies'} this session` : 'No replies yet'}
                 </div>
               </div>
 

@@ -109,14 +109,32 @@ export function upsertActiveMessages(sessionId: number, userId: string, messages
   const now = new Date().toISOString();
   const title = session.title === 'New Chat' ? (deriveTitle(messages) || session.title) : session.title;
 
+  // The frontend strips server-managed fields (totalMs, firstTokenMs, riskScore)
+  // from the messages it sends, so carry them forward from the prior stored
+  // version by index, whenever the incoming message doesn't already have them.
+  // This keeps per-message latency/risk data (and the async-patched riskScore)
+  // from being wiped on every subsequent turn.
+  const prior = session.messages;
+  const merged = messages.map((m: any, i: number) => {
+    const prev = prior[i];
+    if (!prev) return m;
+    const carried: any = { ...m };
+    for (const field of ['totalMs', 'firstTokenMs', 'riskScore']) {
+      if (carried[field] === undefined && prev[field] !== undefined) {
+        carried[field] = prev[field];
+      }
+    }
+    return carried;
+  });
+
   db.prepare(`UPDATE sessions SET messages = ?, title = ?, updated_at = ? WHERE id = ?`).run(
-    JSON.stringify(messages),
+    JSON.stringify(merged),
     title,
     now,
     session.id
   );
 
-  return { ...session, messages, title, updated_at: now };
+  return { ...session, messages: merged, title, updated_at: now };
 }
 
 export function patchSettings(userId: string, data: { policies?: any[]; settings?: any }): SessionRow {

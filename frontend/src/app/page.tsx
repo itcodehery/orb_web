@@ -499,6 +499,22 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     setIsAddingRule(false);
   };
 
+  const handleNewChat = async () => {
+    try {
+      await fetch('http://localhost:3001/api/sessions/active/complete', { method: 'POST', credentials: 'include' });
+    } catch (error) {
+      console.error('Failed to complete session:', error);
+    }
+    setMessages([]);
+    setPolicies([
+      { id: 'fs', title: 'Read Local Files', condition: 'read_file', status: 'Allowed' },
+      { id: 'bash', title: 'System Modifications', condition: 'execute_bash', status: 'Requires Approval' },
+      { id: 'web', title: 'Web Search', condition: 'web_search', status: 'Allowed' },
+    ]);
+    setTools(DEFAULT_TOOLS.map(t => ({ ...t, active: true })));
+    setSystemPrompt('You are Orb, a local AI assistant. Ensure all actions are safe and approved.');
+  };
+
   const [messages, setMessages] = useState<any[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('You are Orb, a local AI assistant. Ensure all actions are safe and approved.');
@@ -1019,9 +1035,14 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                 <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>42.1k Tokens Saved</span></div>
               </div>
             </div>
-            <button className="subtle-btn" onClick={() => handleNavigate('sessions')}>
-              View all sessions
-            </button>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="subtle-btn" onClick={handleNewChat}>
+                New Chat
+              </button>
+              <button className="subtle-btn" onClick={() => handleNavigate('sessions')}>
+                View all sessions
+              </button>
+            </div>
           </motion.div>
 
           <div className="chat-container" ref={chatContainer}>

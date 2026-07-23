@@ -1,20 +1,11 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { getAuth } from '@clerk/express';
+import { Router, Request, Response } from 'express';
+import { requireAuth } from '../middleware/requireAuth';
 import { createKey, listKeys, revokeKey, updateKeyTools, ToolsEnabled } from '../db/apiKeys.repo';
 import { listLogs } from '../db/auditLog.repo';
 
 const router = Router();
 
 // Key management and audit logs are sensitive — only a signed-in Clerk user may touch them.
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const { isAuthenticated } = getAuth(req);
-  if (!isAuthenticated) {
-    res.status(401).json({ error: 'Sign in required' });
-    return;
-  }
-  next();
-}
-
 router.use(requireAuth);
 
 function parseTools(body: any): ToolsEnabled {

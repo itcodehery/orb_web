@@ -1328,6 +1328,35 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 };
 
 const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded } = useUser();
+  const [sessions, setSessions] = useState<any[]>([]);
+
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/sessions', { credentials: 'include' });
+      if (!res.ok) { setSessions([]); return; }
+      const data = await res.json();
+      setSessions(data);
+    } catch (error) {
+      console.error(error);
+      setSessions([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchSessions();
+    else setSessions([]);
+  }, [isSignedIn]);
+
+  const handleResume = async (id: number) => {
+    try {
+      await fetch(`http://localhost:3001/api/sessions/${id}/resume`, { method: 'POST', credentials: 'include' });
+      handleNavigate('app');
+    } catch (error) {
+      console.error('Failed to resume session:', error);
+    }
+  };
+
   return (
     <motion.div
       className="dashboard-wrapper"
@@ -1346,30 +1375,36 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </div>
         </div>
 
-        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '1rem' }}>
-          {[
-            { id: 1, title: 'System upgrade and dependency check', date: 'Today, 10:24 AM', tokens: '14.2k', risk: '14.5%', status: 'Blocked Actions' },
-            { id: 2, title: 'Analyze frontend bundle size', date: 'Yesterday, 4:12 PM', tokens: '8.4k', risk: '2.1%', status: 'Completed' },
-            { id: 3, title: 'Refactor user authentication flow', date: 'Jul 19, 2:45 PM', tokens: '32.1k', risk: '8.4%', status: 'Completed' },
-            { id: 4, title: 'Scan home directory for large files', date: 'Jul 18, 9:15 AM', tokens: '4.2k', risk: '1.2%', status: 'Completed' },
-          ].map(session => (
-            <div key={session.id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-color)' }}>{session.title}</h3>
-                <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{session.date}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>{session.tokens}</span></div>
-                  <div className="telemetry-chip"><TriangleAlert size={14} color="var(--danger-color)" /> <span>{session.risk}</span></div>
+        {!isLoaded ? null : !isSignedIn ? (
+          <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <MessageSquare size={28} color="var(--text-muted)" />
+            <div style={{ fontWeight: 600, color: 'var(--text-color)' }}>Sign in to view your sessions</div>
+            <SignInButton mode="modal">
+              <button className="btn-pill" style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem' }}>Sign In</button>
+            </SignInButton>
+          </div>
+        ) : (
+          <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '1rem' }}>
+            {sessions.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No sessions yet. Start chatting to create one.</div>}
+            {sessions.map((session: any) => (
+              <div key={session.id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleResume(session.id)}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-color)' }}>{session.title}</h3>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{new Date(session.updated_at).toLocaleString()}</div>
                 </div>
-                <div className="status-indicator">
-                  {session.status === 'Completed' ? <><div className="status-dot green"></div> {session.status}</> : <><div className="status-dot red"></div> {session.status}</>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <div className="telemetry-chip"><Clock size={14} color="var(--warning-color)" /> <span>{session.avgLatencyMs != null ? `${(session.avgLatencyMs / 1000).toFixed(1)}s avg` : '—'}</span></div>
+                    <div className="telemetry-chip"><TriangleAlert size={14} color="var(--danger-color)" /> <span>{session.avgRiskScore != null ? `${session.avgRiskScore}% risk` : '—'}</span></div>
+                  </div>
+                  <div className="status-indicator">
+                    {session.status === 'active' ? <><div className="status-dot green"></div> Active</> : <><div className="status-dot green"></div> Completed</>}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </motion.div>
   );

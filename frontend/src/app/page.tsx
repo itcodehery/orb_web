@@ -1509,7 +1509,13 @@ const MemoryScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </div>
         ) : (
           <div className="glass-panel" style={{ padding: '1.5rem' }}>
-            <div className="dash-title-small" style={{ marginBottom: '1rem' }}>What Orb remembers</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div className="dash-title-small">What Orb remembers</div>
+              <button className="icon-btn" onClick={fetchMemories} title="Refresh">Refresh</button>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '-0.5rem', marginBottom: '1rem' }}>
+              New facts are extracted in the background after a reply and can take up to a minute or two to show up — hit Refresh if you don't see something yet.
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {memories.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nothing remembered yet.</div>}
               {memories.map((m: any) => (

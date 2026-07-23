@@ -68,6 +68,11 @@ export function getActiveSession(userId: string): SessionRow | null {
 
 export function createActiveSession(userId: string): SessionRow {
   const now = new Date().toISOString();
+  db.prepare(`UPDATE sessions SET status = 'completed', updated_at = ? WHERE user_id = ? AND status = 'active'`).run(
+    now,
+    userId
+  );
+
   const info = db
     .prepare(
       `INSERT INTO sessions (user_id, title, messages, policies, settings, status, created_at, updated_at)

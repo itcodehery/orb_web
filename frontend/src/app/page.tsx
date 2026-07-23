@@ -439,7 +439,7 @@ const ToolMessage = ({ msg }: { msg: any }) => {
 };
 
 const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
-  const { isSignedIn, isLoaded } = useUser();
+  const { isSignedIn, isLoaded, user } = useUser();
   const chatContainer = useRef<HTMLDivElement>(null);
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
@@ -1049,7 +1049,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         <motion.main layout className="glass-panel dash-panel dash-center">
           <motion.div layout="position" className="dash-title" style={{ paddingBottom: '1.5rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-              <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>Hello Hari</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>Hello {user?.firstName || 'there'}</span>
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
@@ -1075,7 +1075,6 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                   </span>
                 </div>
                 <div className="telemetry-chip"><Shield size={14} color="var(--success-color)" /> <span>1,204 Actions Blocked</span></div>
-                <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>42.1k Tokens Saved</span></div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.75rem' }}>

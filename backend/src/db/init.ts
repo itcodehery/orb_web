@@ -29,5 +29,14 @@ export function initDb() {
       status_code INTEGER,
       FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
     );
+
+    CREATE TABLE IF NOT EXISTS memories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id);
   `);
 }

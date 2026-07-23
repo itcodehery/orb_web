@@ -451,6 +451,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const [outputLimitIdx, setOutputLimitIdx] = useState(2);
   const [performanceMode, setPerformanceMode] = useState<'low' | 'high'>('high');
   const userSetPerfModeRef = useRef(false);
+  const userSetModelRef = useRef(false);
   const [contextTokens, setContextTokens] = useState(0);
   const ctxPercent = Math.min(100, Math.round((contextTokens / PERFORMANCE_PROFILE_INFO[performanceMode].ctxSize) * 100));
   const hallucinationRisk = 14.5;
@@ -518,7 +519,10 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
         const s = session.settings || {};
         if (s.systemPrompt) setSystemPrompt(s.systemPrompt);
-        if (s.selectedModel) setSelectedModel(s.selectedModel);
+        if (s.selectedModel) {
+          setSelectedModel(s.selectedModel);
+          userSetModelRef.current = true;
+        }
         if (s.chatMode) setChatMode(s.chatMode);
         if (s.performanceMode) {
           setPerformanceMode(s.performanceMode);
@@ -575,7 +579,9 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         const data = await response.json();
         if (data.models && data.models.length > 0) {
           setAvailableModels(data.models);
-          setSelectedModel(data.models[0].name);
+          if (!userSetModelRef.current) {
+            setSelectedModel(data.models[0].name);
+          }
         } else {
           setShowInstallAlert(true);
         }

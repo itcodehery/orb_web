@@ -423,6 +423,7 @@ const ToolMessage = ({ msg }: { msg: any }) => {
 };
 
 const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded } = useUser();
   const chatContainer = useRef<HTMLDivElement>(null);
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
@@ -548,6 +549,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
       const response = await fetch('http://localhost:3001/api/chat', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name })),
@@ -639,6 +641,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     try {
       const res = await fetch('http://localhost:3001/api/execute_tool', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tool_name: toolCall.function.name, arguments: toolCall.function.arguments })
       });
@@ -695,6 +698,30 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       delay: 0.3
     });
   }, { scope: chatContainer });
+
+  if (isLoaded && !isSignedIn) {
+    return (
+      <motion.div
+        className="dashboard-wrapper"
+        initial={{ opacity: 0, scale: 1.02, filter: 'blur(15px)' }}
+        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', textAlign: 'center', padding: '2rem' }}>
+          <Shield size={28} color="var(--text-muted)" />
+          <div style={{ fontWeight: 600, fontSize: '1.125rem', color: 'var(--text-color)' }}>Sign in to chat</div>
+          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: 360 }}>
+            Orb remembers facts about you across conversations, so chatting requires a signed-in account.
+          </div>
+          <SignInButton mode="modal">
+            <button className="btn-pill" style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem' }}>Sign In</button>
+          </SignInButton>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div

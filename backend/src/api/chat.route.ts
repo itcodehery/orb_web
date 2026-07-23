@@ -3,8 +3,11 @@ import { Agent } from '../agent/Agent';
 import { Ollama } from '../llm/Ollama';
 import { registry, executor } from '../agent/sharedInstances';
 import { resolvePerformanceMode } from '../llm/performanceModes';
+import { requireAuth } from '../middleware/requireAuth';
 
 const router = Router();
+
+router.use(requireAuth);
 
 router.post('/chat', async (req: Request, res: Response) => {
   try {

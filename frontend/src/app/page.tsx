@@ -8,6 +8,7 @@ import {
   Cpu, Terminal, Search, Send, Plus, X, Globe, FileText, Sun, Moon,
   MessageSquare, Sparkles, Code, Clock
 } from 'lucide-react';
+import { SignInButton, SignUpButton, Show, UserButton, useUser } from '@clerk/nextjs';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -82,6 +83,17 @@ const Appbar = ({ onLogoClick, onApiClick, isDarkMode, setIsDarkMode }: any) => 
       >
         {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
       </button>
+      <Show when="signed-out">
+        <SignInButton mode="modal">
+          <button className="subtle-btn" style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem' }}>Sign In</button>
+        </SignInButton>
+        <SignUpButton mode="modal">
+          <button className="subtle-btn" style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem', background: 'var(--accent-color)', color: '#fff' }}>Sign Up</button>
+        </SignUpButton>
+      </Show>
+      <Show when="signed-in">
+        <UserButton />
+      </Show>
     </div>
   </nav>
 );
@@ -1195,6 +1207,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 };
 
 const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded } = useUser();
   const baseUrl = 'http://localhost:3001/api/v1';
   const [copied, setCopied] = useState(false);
 
@@ -1212,17 +1225,20 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const fetchKeys = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/keys');
+      const res = await fetch('http://localhost:3001/api/keys', { credentials: 'include' });
+      if (!res.ok) { setKeys([]); return; }
       const data = await res.json();
       setKeys(data);
     } catch (error) {
       console.error(error);
+      setKeys([]);
     }
   };
 
   useEffect(() => {
-    fetchKeys();
-  }, []);
+    if (isSignedIn) fetchKeys();
+    else setKeys([]);
+  }, [isSignedIn]);
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return;
@@ -1230,9 +1246,11 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     try {
       const res = await fetch('http://localhost:3001/api/keys', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newKeyName, tools: newKeyTools }),
       });
+      if (!res.ok) { console.error('Failed to create key:', await res.text()); return; }
       const data = await res.json();
       setCreatedKey(data);
       setNewKeyName('');
@@ -1247,7 +1265,7 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const handleRevoke = async (id: number) => {
     if (!window.confirm('Revoke this API key? This cannot be undone.')) return;
-    await fetch(`http://localhost:3001/api/keys/${id}`, { method: 'DELETE' });
+    await fetch(`http://localhost:3001/api/keys/${id}`, { method: 'DELETE', credentials: 'include' });
     fetchKeys();
   };
 
@@ -1263,17 +1281,20 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const fetchAuditLogs = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/audit-logs?limit=50');
+      const res = await fetch('http://localhost:3001/api/audit-logs?limit=50', { credentials: 'include' });
+      if (!res.ok) { setAuditLogs([]); return; }
       const data = await res.json();
       setAuditLogs(data);
     } catch (error) {
       console.error(error);
+      setAuditLogs([]);
     }
   };
 
   useEffect(() => {
-    fetchAuditLogs();
-  }, []);
+    if (isSignedIn) fetchAuditLogs();
+    else setAuditLogs([]);
+  }, [isSignedIn]);
 
   return (
     <motion.div
@@ -1314,68 +1335,83 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </div>
         )}
 
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Create New Key</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <input type="text" className="form-input" placeholder="Key name, e.g. my-script" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} style={{ flex: 1 }} />
-              <button className="icon-btn" title="Generate random name" onClick={generateRandomName}><Sparkles size={16} /></button>
+        {!isLoaded ? null : !isSignedIn ? (
+          <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <Shield size={28} color="var(--text-muted)" />
+            <div style={{ fontWeight: 600, color: 'var(--text-color)' }}>Sign in to manage API keys</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: 360 }}>
+              Key creation, revocation, and audit history are only visible to a signed-in account.
             </div>
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
-              {(['fs', 'bash', 'web'] as const).map(flag => (
-                <label key={flag} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-color)' }}>
-                  <input type="checkbox" checked={newKeyTools[flag]} onChange={(e) => setNewKeyTools({ ...newKeyTools, [flag]: e.target.checked })} />
-                  {flag === 'fs' ? 'Local FS' : flag === 'bash' ? 'Bash Exec' : 'Web Search'}
-                </label>
-              ))}
+            <SignInButton mode="modal">
+              <button className="btn-pill" style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem' }}>Sign In</button>
+            </SignInButton>
+          </div>
+        ) : (
+          <>
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Create New Key</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input type="text" className="form-input" placeholder="Key name, e.g. my-script" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} style={{ flex: 1 }} />
+                  <button className="icon-btn" title="Generate random name" onClick={generateRandomName}><Sparkles size={16} /></button>
+                </div>
+                <div style={{ display: 'flex', gap: '1.5rem' }}>
+                  {(['fs', 'bash', 'web'] as const).map(flag => (
+                    <label key={flag} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-color)' }}>
+                      <input type="checkbox" checked={newKeyTools[flag]} onChange={(e) => setNewKeyTools({ ...newKeyTools, [flag]: e.target.checked })} />
+                      {flag === 'fs' ? 'Local FS' : flag === 'bash' ? 'Bash Exec' : 'Web Search'}
+                    </label>
+                  ))}
+                </div>
+                <button className="btn-pill" style={{ alignSelf: 'flex-start', padding: '0.75rem 1.5rem' }} onClick={handleCreateKey} disabled={!newKeyName.trim() || isCreating}>Create Key</button>
+              </div>
             </div>
-            <button className="btn-pill" style={{ alignSelf: 'flex-start', padding: '0.75rem 1.5rem' }} onClick={handleCreateKey} disabled={!newKeyName.trim() || isCreating}>Create Key</button>
-          </div>
-        </div>
 
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Active Keys</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {keys.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No keys yet.</div>}
-            {keys.map(k => (
-              <div key={k.id} className="rule-row">
-                <div>
-                  <div className="rule-row-title">{k.name} <code style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.maskedKey}</code></div>
-                  <div className="rule-row-desc">
-                    {Object.entries(k.tools).filter(([, v]) => v).map(([t]) => t).join(', ') || 'no tools enabled'}
-                    {k.revoked_at ? ' · revoked' : ''}
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Active Keys</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {keys.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No keys yet.</div>}
+                {keys.map(k => (
+                  <div key={k.id} className="rule-row">
+                    <div>
+                      <div className="rule-row-title">{k.name} <code style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.maskedKey}</code></div>
+                      <div className="rule-row-desc">
+                        {Object.entries(k.tools).filter(([, v]) => v).map(([t]) => t).join(', ') || 'no tools enabled'}
+                        {k.revoked_at ? ' · revoked' : ''}
+                      </div>
+                    </div>
+                    {!k.revoked_at && (
+                      <button className="icon-btn" onClick={() => handleRevoke(k.id)}><X size={16} /></button>
+                    )}
                   </div>
-                </div>
-                {!k.revoked_at && (
-                  <button className="icon-btn" onClick={() => handleRevoke(k.id)}><X size={16} /></button>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <div className="dash-title-small">Recent API Activity</div>
-            <button className="icon-btn" onClick={fetchAuditLogs}>Refresh</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {auditLogs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No API activity yet.</div>}
-            {auditLogs.map(log => (
-              <div key={log.id} className="rule-row">
-                <div>
-                  <div className="rule-row-title">{log.key_name} → {log.endpoint}</div>
-                  <div className="rule-row-desc">
-                    {new Date(log.timestamp).toLocaleString()} · {JSON.parse(log.tool_calls || '[]').map((t: any) => t.function?.name).join(', ') || 'no tools'} · {log.latency_ms}ms
-                  </div>
-                </div>
-                <div className="status-indicator">
-                  <div className={`status-dot ${log.status_code === 200 ? 'green' : 'red'}`}></div> {log.status_code}
-                </div>
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div className="dash-title-small">Recent API Activity</div>
+                <button className="icon-btn" onClick={fetchAuditLogs}>Refresh</button>
               </div>
-            ))}
-          </div>
-        </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {auditLogs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No API activity yet.</div>}
+                {auditLogs.map(log => (
+                  <div key={log.id} className="rule-row">
+                    <div>
+                      <div className="rule-row-title">{log.key_name} → {log.endpoint}</div>
+                      <div className="rule-row-desc">
+                        {new Date(log.timestamp).toLocaleString()} · {JSON.parse(log.tool_calls || '[]').map((t: any) => t.function?.name).join(', ') || 'no tools'} · {log.latency_ms}ms
+                      </div>
+                    </div>
+                    <div className="status-indicator">
+                      <div className={`status-dot ${log.status_code === 200 ? 'green' : 'red'}`}></div> {log.status_code}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </motion.div>
   );

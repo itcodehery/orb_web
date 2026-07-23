@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.44",
     "@tavily/core": "^0.7.6",
     "better-sqlite3": "^13.0.1",
     "cors": "^2.8.5",

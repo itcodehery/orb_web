@@ -3,6 +3,7 @@ dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
+import { clerkMiddleware } from '@clerk/express';
 
 import chatRoutes from './api/chat.route';
 import modelsRoutes from './api/models.route';
@@ -15,8 +16,9 @@ import { initDb } from './db/init';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:3000', credentials: true }));
 app.use(express.json());
+app.use(clerkMiddleware());
 
 app.use('/api', chatRoutes);
 app.use('/api', modelsRoutes);

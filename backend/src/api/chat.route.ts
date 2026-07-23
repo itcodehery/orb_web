@@ -57,7 +57,7 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
     if (finalReply) {
       const lastUserMessage = [...messages].reverse().find((m: any) => m.role === 'user');
       const assistantMessage = { role: 'assistant', content: finalReply, totalMs: Date.now() - requestStartedAt };
-      upsertActiveMessages(userId as string, [...messages, assistantMessage]);
+      upsertActiveMessages(session.id, userId as string, [...messages, assistantMessage]);
 
       if (lastUserMessage?.content) {
         analyzeChat(userId as string, model, session.id, messageIndex, existingFacts, lastUserMessage.content, finalReply).catch(err => {

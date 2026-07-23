@@ -99,8 +99,13 @@ function deriveTitle(messages: any[]): string | null {
   return text.length > 60 ? text.slice(0, 60) + '…' : text;
 }
 
-export function upsertActiveMessages(userId: string, messages: any[]): SessionRow {
-  const session = getActiveSession(userId) || createActiveSession(userId);
+export function upsertActiveMessages(sessionId: number, userId: string, messages: any[]): SessionRow | null {
+  const row = db
+    .prepare(`SELECT * FROM sessions WHERE id = ? AND user_id = ?`)
+    .get(sessionId, userId) as SessionDbRow | undefined;
+  if (!row) return null;
+
+  const session = toSessionRow(row);
   const now = new Date().toISOString();
   const title = session.title === 'New Chat' ? (deriveTitle(messages) || session.title) : session.title;
 

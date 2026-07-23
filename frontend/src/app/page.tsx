@@ -6,7 +6,7 @@ import { useGSAP } from '@gsap/react';
 import {
   ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, Shield, Zap,
   Cpu, Terminal, Search, Send, Plus, X, Globe, FileText, Sun, Moon,
-  MessageSquare, Sparkles, Code, Clock
+  MessageSquare, Sparkles, Code, Clock, Brain
 } from 'lucide-react';
 import { SignInButton, SignUpButton, Show, UserButton, useUser } from '@clerk/nextjs';
 import ReactMarkdown from 'react-markdown';
@@ -22,11 +22,11 @@ const PERFORMANCE_PROFILE_INFO: Record<'low' | 'high', { summary: string; ctxSiz
 };
 
 export default function Home() {
-  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'transition'>('landing');
-  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api'>('app');
+  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'transition'>('landing');
+  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory'>('app');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api') => {
+  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api' | 'memory') => {
     if (screen === target || screen === 'transition') return;
     setNextScreen(target);
     setScreen('transition');
@@ -50,12 +50,13 @@ export default function Home() {
       {screen === 'app' && <AppScreen key="app" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'sessions' && <SessionsScreen key="sessions" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'api' && <ApiScreen key="api" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'memory' && <MemoryScreen key="memory" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'transition' && <TransitionScreen key="transition" />}
     </AnimatePresence>
   );
 }
 
-const Appbar = ({ onLogoClick, onApiClick, isDarkMode, setIsDarkMode }: any) => (
+const Appbar = ({ onLogoClick, onApiClick, onMemoryClick, isDarkMode, setIsDarkMode }: any) => (
   <nav className="app-nav">
     <motion.div
       className="logo"
@@ -76,6 +77,13 @@ const Appbar = ({ onLogoClick, onApiClick, isDarkMode, setIsDarkMode }: any) => 
         style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
       >
         <Code size={20} />
+      </button>
+      <button
+        onClick={onMemoryClick}
+        title="Memory"
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
+      >
+        <Brain size={20} />
       </button>
       <button
         onClick={() => setIsDarkMode(!isDarkMode)}
@@ -109,7 +117,7 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     >
       {/* Navigation */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
-        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
       </div>
 
       {/* HERO SECTION */}
@@ -708,7 +716,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
-        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
         <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', textAlign: 'center', padding: '2rem' }}>
           <Shield size={28} color="var(--text-muted)" />
           <div style={{ fontWeight: 600, fontSize: '1.125rem', color: 'var(--text-color)' }}>Sign in to chat</div>
@@ -767,7 +775,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </motion.div>
         )}
       </AnimatePresence>
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div className="dashboard-content">
         {/* Left Panel */}
@@ -1194,7 +1202,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
         <div className="dash-title" style={{ paddingBottom: '2rem' }}>
@@ -1331,7 +1339,7 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>
@@ -1438,6 +1446,83 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               </div>
             </div>
           </>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+const MemoryScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded } = useUser();
+  const [memories, setMemories] = useState<any[]>([]);
+
+  const fetchMemories = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/memories', { credentials: 'include' });
+      if (!res.ok) { setMemories([]); return; }
+      const data = await res.json();
+      setMemories(data);
+    } catch (error) {
+      console.error(error);
+      setMemories([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchMemories();
+    else setMemories([]);
+  }, [isSignedIn]);
+
+  const handleDelete = async (id: number) => {
+    await fetch(`http://localhost:3001/api/memories/${id}`, { method: 'DELETE', credentials: 'include' });
+    fetchMemories();
+  };
+
+  return (
+    <motion.div
+      className="dashboard-wrapper"
+      initial={{ opacity: 0, scale: 0.98, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+      transition={{ duration: 0.4 }}
+    >
+      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+
+      <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="dash-title" style={{ paddingBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button className="icon-btn" onClick={() => handleNavigate('app')}><ChevronLeft size={20} /></button>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-color)' }}>Memory</h1>
+          </div>
+        </div>
+
+        {!isLoaded ? null : !isSignedIn ? (
+          <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <Brain size={28} color="var(--text-muted)" />
+            <div style={{ fontWeight: 600, color: 'var(--text-color)' }}>Sign in to view your memory</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: 360 }}>
+              Facts Orb remembers about you across conversations are only visible to a signed-in account.
+            </div>
+            <SignInButton mode="modal">
+              <button className="btn-pill" style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem' }}>Sign In</button>
+            </SignInButton>
+          </div>
+        ) : (
+          <div className="glass-panel" style={{ padding: '1.5rem' }}>
+            <div className="dash-title-small" style={{ marginBottom: '1rem' }}>What Orb remembers</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {memories.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nothing remembered yet.</div>}
+              {memories.map((m: any) => (
+                <div key={m.id} className="rule-row">
+                  <div>
+                    <div className="rule-row-title">{m.content}</div>
+                    <div className="rule-row-desc">{new Date(m.created_at).toLocaleString()}</div>
+                  </div>
+                  <button className="icon-btn" onClick={() => handleDelete(m.id)}><X size={16} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </motion.div>

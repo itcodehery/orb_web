@@ -6,13 +6,19 @@ import { useGSAP } from '@gsap/react';
 import {
   ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, Shield, Zap,
   Cpu, Terminal, Search, Send, Plus, X, Globe, FileText, Sun, Moon,
-  MessageSquare, Sparkles, Code
+  MessageSquare, Sparkles, Code, Clock
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 gsap.registerPlugin(useGSAP);
+
+// Mirrors backend/src/llm/performanceModes.ts PERFORMANCE_PROFILES — keep in sync if those change.
+const PERFORMANCE_PROFILE_INFO: Record<'low' | 'high', { summary: string }> = {
+  low: { summary: '2K context · 512 tok response cap · 12-message history · model unloads after 1m idle' },
+  high: { summary: '8K context · unlimited response · full history · model stays loaded 30m idle' },
+};
 
 export default function Home() {
   const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'transition'>('landing');
@@ -519,6 +525,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const processChat = async (currentMessages: any[]) => {
     setIsLoading(true);
+    const requestStartedAt = performance.now();
     try {
       const toolPolicies = policies.reduce((acc, p) => {
         acc[p.condition] = p.status;
@@ -546,7 +553,10 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       
       const decoder = new TextDecoder('utf-8');
       
-      let aiMessage = { role: 'assistant', content: '', type: 'normal', tool_calls: [] };
+      let aiMessage: any = {
+        role: 'assistant', content: '', type: 'normal', tool_calls: [],
+        firstTokenMs: null as number | null, totalMs: null as number | null,
+      };
       let nextMessages = [...currentMessages, aiMessage];
       
       // Show empty message block immediately and stop "Thinking..." spinner
@@ -570,6 +580,9 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             const data = JSON.parse(line);
             
             if (data.type === 'content_chunk') {
+              if (aiMessage.firstTokenMs === null) {
+                aiMessage.firstTokenMs = performance.now() - requestStartedAt;
+              }
               aiMessage.content += data.content;
               setMessages([...nextMessages]);
             } else if (data.type === 'tool_call_intent') {
@@ -596,6 +609,8 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
       // If the stream ended and we had tools executed (but not paused), we need to check if we should continue
       // Actually, the backend loop handles continuing. So when the stream ends normally, it means 'done'.
+      aiMessage.totalMs = performance.now() - requestStartedAt;
+      setMessages([...nextMessages]);
     } catch (error) {
       console.error(error);
       setMessages(prev => [...prev, { role: 'system', content: 'Network error communicating with backend.', type: 'normal' }]);
@@ -782,6 +797,11 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                         </button>
                       ))}
                     </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: 1.5 }}>
+                      {PERFORMANCE_PROFILE_INFO[performanceMode].summary}
+                      <br />
+                      {userSetPerfModeRef.current ? 'Manually set' : 'Auto-selected for this system'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -921,6 +941,13 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                           {msg.content || ''}
                         </ReactMarkdown>
                       ) : msg.content}
+                    </div>
+                  )}
+                  {msg.role === 'assistant' && msg.totalMs != null && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '0.375rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <Clock size={12} />
+                      {msg.firstTokenMs != null && <span>first token {(msg.firstTokenMs / 1000).toFixed(2)}s ·</span>}
+                      <span>total {(msg.totalMs / 1000).toFixed(2)}s</span>
                     </div>
                   )}
                   {msg.tool_calls && msg.tool_calls.length > 0 && (

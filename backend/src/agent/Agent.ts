@@ -20,7 +20,7 @@ export class Agent {
     streamCallback: (chunk: any) => void,
     getPolicyStatus: (toolName: string) => string,
     performanceMode: PerformanceMode = 'high'
-  ) {
+  ): Promise<{ finalReply: string | null }> {
     let currentMessages = [...messages];
 
     const { maxHistoryMessages } = PERFORMANCE_PROFILES[performanceMode];
@@ -96,7 +96,7 @@ export class Agent {
             // Pause loop and yield back to client
             streamCallback({ type: 'requires_approval', toolCall });
             // End the current run. The client must resume.
-            return;
+            return { finalReply: null };
           } else {
             // Execute immediately
             const result = await this.executor.execute(toolCall);
@@ -111,7 +111,7 @@ export class Agent {
 
       // No tool calls, meaning the LLM has given its final answer
       streamCallback({ type: 'done', contextTokens });
-      break;
+      return { finalReply: fullContent || null };
     }
   }
 }

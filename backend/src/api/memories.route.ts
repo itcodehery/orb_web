@@ -5,14 +5,12 @@ import { listMemories, deleteMemory } from '../db/memories.repo';
 
 const router = Router();
 
-router.use(requireAuth);
-
-router.get('/memories', (req: Request, res: Response) => {
+router.get('/memories', requireAuth, (req: Request, res: Response) => {
   const { userId } = getAuth(req);
   res.json(listMemories(userId as string));
 });
 
-router.delete('/memories/:id', (req: Request, res: Response) => {
+router.delete('/memories/:id', requireAuth, (req: Request, res: Response) => {
   const { userId } = getAuth(req);
   deleteMemory(Number(req.params.id), userId as string);
   res.status(204).end();

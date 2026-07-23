@@ -38,5 +38,20 @@ export function initDb() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id);
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT 'New Chat',
+      messages TEXT NOT NULL DEFAULT '[]',
+      policies TEXT NOT NULL DEFAULT '[]',
+      settings TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON sessions(user_id, status);
   `);
 }

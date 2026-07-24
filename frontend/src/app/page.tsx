@@ -6,7 +6,7 @@ import { useGSAP } from '@gsap/react';
 import {
   ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, Shield, Zap,
   Cpu, Terminal, Send, Plus, X, Globe, FileText, Sun, Moon,
-  MessageSquare, Sparkles, Code, Clock, Brain, RefreshCw, Square
+  MessageSquare, Sparkles, Code, Clock, Brain, RefreshCw, Square, Plug
 } from 'lucide-react';
 import { SignInButton, SignUpButton, Show, UserButton, useUser } from '@clerk/nextjs';
 import ReactMarkdown from 'react-markdown';
@@ -29,19 +29,24 @@ const DEFAULT_TOOLS = [
   { id: 'web', name: 'Web Search', icon: <Globe size={14} /> },
 ];
 
-// Cloud models routed through backend/src/llm/Anthropic.ts (selected when the
-// model name starts with 'claude-'). Requires ANTHROPIC_API_KEY server-side.
-const CLAUDE_MODELS = [
+// Cloud models routed through backend/src/llm/factory.ts by prefix — kept in
+// sync with backend/src/db/connectors.repo.ts's KNOWN_PROVIDERS modelPrefix
+// values. Configure the matching key on the Connectors screen to use these.
+const CLOUD_MODELS = [
   { name: 'claude-sonnet-5' },
   { name: 'claude-haiku-4-5' },
+  { name: 'gpt-4o' },
+  { name: 'gpt-4o-mini' },
+  { name: 'groq/llama-3.3-70b-versatile' },
+  { name: 'mistral/mistral-large-latest' },
 ];
 
 export default function Home() {
-  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'transition'>('landing');
-  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory'>('app');
+  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors' | 'transition'>('landing');
+  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors'>('app');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api' | 'memory') => {
+  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors') => {
     if (screen === target || screen === 'transition') return;
     setNextScreen(target);
     setScreen('transition');
@@ -66,12 +71,13 @@ export default function Home() {
       {screen === 'sessions' && <SessionsScreen key="sessions" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'api' && <ApiScreen key="api" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'memory' && <MemoryScreen key="memory" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'connectors' && <ConnectorsScreen key="connectors" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'transition' && <TransitionScreen key="transition" />}
     </AnimatePresence>
   );
 }
 
-const Appbar = ({ onLogoClick, onChatClick, onApiClick, onMemoryClick, isDarkMode, setIsDarkMode }: any) => (
+const Appbar = ({ onLogoClick, onChatClick, onApiClick, onMemoryClick, onConnectorsClick, isDarkMode, setIsDarkMode }: any) => (
   <nav className="app-nav">
     <motion.div
       className="logo"
@@ -88,6 +94,13 @@ const Appbar = ({ onLogoClick, onChatClick, onApiClick, onMemoryClick, isDarkMod
         style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
       >
         <MessageSquare size={16} /> Chat
+      </button>
+      <button
+        onClick={onConnectorsClick}
+        title="Connectors"
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
+      >
+        <Plug size={20} />
       </button>
       <button
         onClick={onApiClick}
@@ -135,7 +148,7 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     >
       {/* Navigation */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
-        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
       </div>
 
       {/* HERO SECTION */}
@@ -662,7 +675,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       } catch (error) {
         // Ollama unreachable — Claude models below can still be used if ANTHROPIC_API_KEY is configured.
       }
-      const models = [...ollamaModels, ...CLAUDE_MODELS];
+      const models = [...ollamaModels, ...CLOUD_MODELS];
       setAvailableModels(models);
       if (!userSetModelRef.current && models.length > 0) {
         setSelectedModel(models[0].name);
@@ -889,7 +902,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
-        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
         <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', textAlign: 'center', padding: '2rem' }}>
           <Shield size={28} color="var(--text-muted)" />
           <div style={{ fontWeight: 600, fontSize: '1.125rem', color: 'var(--text-color)' }}>Sign in to chat</div>
@@ -948,7 +961,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </motion.div>
         )}
       </AnimatePresence>
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div className="dashboard-content">
         {/* Left Panel */}
@@ -1438,7 +1451,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
         <div className="dash-title" style={{ paddingBottom: '2rem' }}>
@@ -1492,52 +1505,6 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     navigator.clipboard.writeText(baseUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
-  };
-
-  const [connectors, setConnectors] = useState<any[]>([]);
-  const [connectorInputs, setConnectorInputs] = useState<Record<string, string>>({});
-  const [savingConnector, setSavingConnector] = useState<string | null>(null);
-
-  const fetchConnectors = async () => {
-    try {
-      const res = await fetch('http://localhost:3001/api/connectors', { credentials: 'include' });
-      if (!res.ok) { setConnectors([]); return; }
-      setConnectors(await res.json());
-    } catch (error) {
-      console.error(error);
-      setConnectors([]);
-    }
-  };
-
-  useEffect(() => {
-    if (isSignedIn) fetchConnectors();
-    else setConnectors([]);
-  }, [isSignedIn]);
-
-  const handleSaveConnector = async (provider: string) => {
-    const apiKey = connectorInputs[provider]?.trim();
-    if (!apiKey) return;
-    setSavingConnector(provider);
-    try {
-      await fetch('http://localhost:3001/api/connectors', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, apiKey }),
-      });
-      setConnectorInputs({ ...connectorInputs, [provider]: '' });
-      fetchConnectors();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setSavingConnector(null);
-    }
-  };
-
-  const handleRemoveConnector = async (provider: string) => {
-    if (!window.confirm('Remove this connector\'s stored API key?')) return;
-    await fetch(`http://localhost:3001/api/connectors/${provider}`, { method: 'DELETE', credentials: 'include' });
-    fetchConnectors();
   };
 
   const [keys, setKeys] = useState<any[]>([]);
@@ -1645,7 +1612,7 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>
@@ -1663,51 +1630,6 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           <button className="icon-btn" onClick={handleCopyBaseUrl}>{copied ? 'Copied!' : <FileText size={16} />}</button>
         </div>
 
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <div className="dash-title-small" style={{ marginBottom: '0.25rem' }}>Model Connectors</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Connect additional model providers alongside your local Ollama models. Keys are stored locally and never leave this machine.
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {connectors.map(c => (
-              <div key={c.provider} className="rule-row" style={{ alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <div className="rule-row-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {c.name}
-                    <div className="status-indicator">
-                      <div className={`status-dot ${c.configured ? 'green' : 'yellow'}`}></div>
-                      {c.configured ? `Connected${c.source === 'environment' ? ' (via .env)' : ''}` : 'Not connected'}
-                    </div>
-                  </div>
-                  {c.configured ? (
-                    <div className="rule-row-desc">{c.maskedKey}</div>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                      <input
-                        type="password"
-                        className="form-input"
-                        placeholder="Paste API key"
-                        value={connectorInputs[c.provider] || ''}
-                        onChange={(e) => setConnectorInputs({ ...connectorInputs, [c.provider]: e.target.value })}
-                      />
-                      <button
-                        className="btn-pill"
-                        style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', whiteSpace: 'nowrap' }}
-                        onClick={() => handleSaveConnector(c.provider)}
-                        disabled={!connectorInputs[c.provider]?.trim() || savingConnector === c.provider}
-                      >
-                        Connect
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {c.configured && c.source === 'database' && (
-                  <button className="icon-btn" onClick={() => handleRemoveConnector(c.provider)}><X size={16} /></button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
 
         {createdKey && (
           <div className="glass-panel" style={{ padding: '1.5rem', border: '1px solid var(--warning-color)' }}>
@@ -1906,7 +1828,7 @@ const MemoryScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>
@@ -1950,6 +1872,128 @@ const MemoryScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             </div>
           </div>
         )}
+      </div>
+    </motion.div>
+  );
+};
+
+const ConnectorsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn } = useUser();
+  const [connectors, setConnectors] = useState<any[]>([]);
+  const [connectorInputs, setConnectorInputs] = useState<Record<string, string>>({});
+  const [savingConnector, setSavingConnector] = useState<string | null>(null);
+
+  const fetchConnectors = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/connectors', { credentials: 'include' });
+      if (!res.ok) { setConnectors([]); return; }
+      setConnectors(await res.json());
+    } catch (error) {
+      console.error(error);
+      setConnectors([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchConnectors();
+    else setConnectors([]);
+  }, [isSignedIn]);
+
+  const handleSaveConnector = async (provider: string) => {
+    const apiKey = connectorInputs[provider]?.trim();
+    if (!apiKey) return;
+    setSavingConnector(provider);
+    try {
+      await fetch('http://localhost:3001/api/connectors', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, apiKey }),
+      });
+      setConnectorInputs({ ...connectorInputs, [provider]: '' });
+      fetchConnectors();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSavingConnector(null);
+    }
+  };
+
+  const handleRemoveConnector = async (provider: string) => {
+    if (!window.confirm("Remove this connector's stored API key?")) return;
+    await fetch(`http://localhost:3001/api/connectors/${provider}`, { method: 'DELETE', credentials: 'include' });
+    fetchConnectors();
+  };
+
+  return (
+    <motion.div
+      className="dashboard-wrapper"
+      initial={{ opacity: 0, scale: 0.98, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+      transition={{ duration: 0.4 }}
+    >
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+
+      <div style={{ maxWidth: '800px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="dash-title" style={{ paddingBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button className="icon-btn" onClick={() => handleNavigate('app')}><ChevronLeft size={20} /></button>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-color)' }}>Connectors</h1>
+          </div>
+        </div>
+
+        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6, marginTop: '-1rem' }}>
+          Bring your own cloud models alongside your local Ollama models. Keys are stored locally in Orb's database and never leave this machine.
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {connectors.map(c => (
+              <div key={c.provider} className="rule-row" style={{ alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div className="rule-row-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {c.name}
+                    <div className="status-indicator">
+                      <div className={`status-dot ${c.configured ? 'green' : 'yellow'}`}></div>
+                      {c.configured ? `Connected${c.source === 'environment' ? ' (via .env)' : ''}` : 'Not connected'}
+                    </div>
+                    {!c.chatSupported && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', border: '1px solid var(--panel-border)', borderRadius: '99px', padding: '0.1rem 0.6rem' }}>
+                        Key storage only — chat wiring coming soon
+                      </span>
+                    )}
+                  </div>
+                  <div className="rule-row-desc">
+                    {c.configured ? c.maskedKey : `Models: ${c.modelPrefix}*`}
+                  </div>
+                  {!c.configured && (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <input
+                        type="password"
+                        className="form-input"
+                        placeholder="Paste API key"
+                        value={connectorInputs[c.provider] || ''}
+                        onChange={(e) => setConnectorInputs({ ...connectorInputs, [c.provider]: e.target.value })}
+                      />
+                      <button
+                        className="btn-pill"
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', whiteSpace: 'nowrap' }}
+                        onClick={() => handleSaveConnector(c.provider)}
+                        disabled={!connectorInputs[c.provider]?.trim() || savingConnector === c.provider}
+                      >
+                        Connect
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {c.configured && c.source === 'database' && (
+                  <button className="icon-btn" onClick={() => handleRemoveConnector(c.provider)}><X size={16} /></button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </motion.div>
   );

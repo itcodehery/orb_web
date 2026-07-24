@@ -5,21 +5,43 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import {
   ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, Shield, Zap,
-  Cpu, Terminal, Search, Send, Plus, X, Globe, FileText, Sun, Moon,
-  MessageSquare, Sparkles, Code
+  Cpu, Terminal, Send, Plus, X, Globe, FileText, Sun, Moon,
+  MessageSquare, Sparkles, Code, Clock, Brain, RefreshCw, Square
 } from 'lucide-react';
+import { SignInButton, SignUpButton, Show, UserButton, useUser } from '@clerk/nextjs';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 gsap.registerPlugin(useGSAP);
 
+// Mirrors backend/src/llm/performanceModes.ts PERFORMANCE_PROFILES — keep in sync if those change.
+const PERFORMANCE_PROFILE_INFO: Record<'low' | 'high', { summary: string; ctxSize: number }> = {
+  low: { summary: '2K context · 12-message history · model unloads after 1m idle · response length governed by Output Limit (hard backstop ~1.5×, capped for this tier)', ctxSize: 2048 },
+  high: { summary: '8K context · full history · model stays loaded 30m idle · response length governed by Output Limit (hard backstop ~2×)', ctxSize: 8192 },
+};
+
+// Icons aren't JSON-serializable, so persisted session settings only ever carry
+// { id, name, active } — this map reconstructs the icon by id after hydration.
+const DEFAULT_TOOLS = [
+  { id: 'fs', name: 'Local FS', icon: <FileText size={14} /> },
+  { id: 'bash', name: 'Bash Exec', icon: <Terminal size={14} /> },
+  { id: 'web', name: 'Web Search', icon: <Globe size={14} /> },
+];
+
+// Cloud models routed through backend/src/llm/Anthropic.ts (selected when the
+// model name starts with 'claude-'). Requires ANTHROPIC_API_KEY server-side.
+const CLAUDE_MODELS = [
+  { name: 'claude-sonnet-5' },
+  { name: 'claude-haiku-4-5' },
+];
+
 export default function Home() {
-  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'transition'>('landing');
-  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api'>('app');
+  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'transition'>('landing');
+  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory'>('app');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api') => {
+  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api' | 'memory') => {
     if (screen === target || screen === 'transition') return;
     setNextScreen(target);
     setScreen('transition');
@@ -43,12 +65,13 @@ export default function Home() {
       {screen === 'app' && <AppScreen key="app" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'sessions' && <SessionsScreen key="sessions" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'api' && <ApiScreen key="api" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'memory' && <MemoryScreen key="memory" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'transition' && <TransitionScreen key="transition" />}
     </AnimatePresence>
   );
 }
 
-const Appbar = ({ onLogoClick, onApiClick, isDarkMode, setIsDarkMode }: any) => (
+const Appbar = ({ onLogoClick, onChatClick, onApiClick, onMemoryClick, isDarkMode, setIsDarkMode }: any) => (
   <nav className="app-nav">
     <motion.div
       className="logo"
@@ -60,9 +83,12 @@ const Appbar = ({ onLogoClick, onApiClick, isDarkMode, setIsDarkMode }: any) => 
       orb.
     </motion.div>
     <div style={{ display: 'flex', gap: '2rem', fontSize: '0.875rem', fontWeight: 600, alignItems: 'center' }}>
-      <span>Work</span>
-      <span>About</span>
-      <span>Info</span>
+      <button
+        onClick={onChatClick}
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+      >
+        <MessageSquare size={16} /> Chat
+      </button>
       <button
         onClick={onApiClick}
         title="API Access"
@@ -71,11 +97,29 @@ const Appbar = ({ onLogoClick, onApiClick, isDarkMode, setIsDarkMode }: any) => 
         <Code size={20} />
       </button>
       <button
+        onClick={onMemoryClick}
+        title="Memory"
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
+      >
+        <Brain size={20} />
+      </button>
+      <button
         onClick={() => setIsDarkMode(!isDarkMode)}
         style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
       >
         {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
       </button>
+      <Show when="signed-out">
+        <SignInButton mode="modal">
+          <button className="subtle-btn" style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem' }}>Sign In</button>
+        </SignInButton>
+        <SignUpButton mode="modal">
+          <button className="subtle-btn" style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem', background: 'var(--accent-color)', color: '#fff' }}>Sign Up</button>
+        </SignUpButton>
+      </Show>
+      <Show when="signed-in">
+        <UserButton />
+      </Show>
     </div>
   </nav>
 );
@@ -91,7 +135,7 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     >
       {/* Navigation */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
-        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
       </div>
 
       {/* HERO SECTION */}
@@ -345,6 +389,35 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   );
 };
 
+const ThinkingIndicator = () => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+    <div style={{ position: 'relative', width: 24, height: 24 }}>
+      <motion.div
+        style={{ position: 'absolute', inset: -7, borderRadius: '50%', background: 'var(--accent-gradient)', filter: 'blur(8px)' }}
+        animate={{ opacity: [0.25, 0.65, 0.25], scale: [0.85, 1.2, 0.85] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
+      >
+        <Sparkles size={12} color="#fff" />
+      </motion.div>
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      {[0, 1, 2].map(i => (
+        <motion.span
+          key={i}
+          style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-color)', display: 'inline-block' }}
+          animate={{ y: [0, -6, 0], opacity: [0.35, 1, 0.35] }}
+          transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut', delay: i * 0.15 }}
+        />
+      ))}
+    </div>
+  </div>
+);
+
 const ToolMessage = ({ msg }: { msg: any }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
@@ -405,25 +478,26 @@ const ToolMessage = ({ msg }: { msg: any }) => {
 };
 
 const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded, user } = useUser();
   const chatContainer = useRef<HTMLDivElement>(null);
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useState('');
   const [availableModels, setAvailableModels] = useState<any[]>([]);
   const [showInstallAlert, setShowInstallAlert] = useState(false);
-  const [chatMode, setChatMode] = useState('Ask');
+  const [chatMode, setChatMode] = useState('Auto');
   const [inputLimitIdx, setInputLimitIdx] = useState(4);
   const [outputLimitIdx, setOutputLimitIdx] = useState(2);
   const [performanceMode, setPerformanceMode] = useState<'low' | 'high'>('high');
   const userSetPerfModeRef = useRef(false);
-  const hallucinationRisk = 14.5;
+  const userSetModelRef = useRef(false);
+  const [contextTokens, setContextTokens] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const ctxPercent = Math.min(100, Math.round((contextTokens / PERFORMANCE_PROFILE_INFO[performanceMode].ctxSize) * 100));
   const tokenPresets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 128000];
 
-  const [tools, setTools] = useState([
-    { id: 'fs', name: 'Local FS', active: true, icon: <FileText size={14} /> },
-    { id: 'bash', name: 'Bash Exec', active: true, icon: <Terminal size={14} /> },
-    { id: 'web', name: 'Web Search', active: true, icon: <Globe size={14} /> }
-  ]);
+  const [tools, setTools] = useState(DEFAULT_TOOLS.map(t => ({ ...t, active: true })));
   const toggleTool = (id: string) => setTools(tools.map(t => t.id === id ? { ...t, active: !t.active } : t));
 
   const [policies, setPolicies] = useState([
@@ -465,27 +539,135 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     setIsAddingRule(false);
   };
 
+  const handleNewChat = async () => {
+    try {
+      await fetch('http://localhost:3001/api/sessions/active/complete', { method: 'POST', credentials: 'include' });
+    } catch (error) {
+      console.error('Failed to complete session:', error);
+    }
+    setMessages([]);
+    setPolicies([
+      { id: 'fs', title: 'Read Local Files', condition: 'read_file', status: 'Allowed' },
+      { id: 'bash', title: 'System Modifications', condition: 'execute_bash', status: 'Requires Approval' },
+      { id: 'web', title: 'Web Search', condition: 'web_search', status: 'Allowed' },
+    ]);
+    setTools(DEFAULT_TOOLS.map(t => ({ ...t, active: true })));
+    setSystemPrompt('You are Orb, a local AI assistant. Ensure all actions are safe and approved.');
+  };
+
   const [messages, setMessages] = useState<any[]>([]);
+
+  const messagesWithLatency = messages.filter((m: any) => m.role === 'assistant' && typeof m.totalMs === 'number');
+  const avgLatencyMs = messagesWithLatency.length
+    ? Math.round(messagesWithLatency.reduce((sum: number, m: any) => sum + m.totalMs, 0) / messagesWithLatency.length)
+    : null;
+
+  const messagesWithRisk = messages.filter((m: any) => m.role === 'assistant' && typeof m.riskScore === 'number');
+  const hallucinationRisk = messagesWithRisk.length
+    ? Math.round(messagesWithRisk.reduce((sum: number, m: any) => sum + m.riskScore, 0) / messagesWithRisk.length)
+    : 0;
+
+  const refreshActiveSession = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/sessions/active', { credentials: 'include' });
+      if (!res.ok) return;
+      const session = await res.json();
+      if (!Array.isArray(session?.messages)) return;
+      setMessages((prev: any[]) => prev.map((m, i) => {
+        const serverMsg = session.messages[i];
+        return serverMsg && typeof serverMsg.riskScore === 'number' ? { ...m, riskScore: serverMsg.riskScore } : m;
+      }));
+    } catch (error) {
+      console.error('Failed to refresh session:', error);
+    }
+  };
+
   const [inputValue, setInputValue] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('You are Orb, a local AI assistant. Ensure all actions are safe and approved.');
   const [isLoading, setIsLoading] = useState(false);
+  const hasHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const hydrate = async () => {
+      try {
+        const res = await fetch('http://localhost:3001/api/sessions/active', { credentials: 'include' });
+        if (!res.ok) return;
+        const session = await res.json();
+        if (!session) return;
+
+        if (Array.isArray(session.messages)) setMessages(session.messages);
+        if (Array.isArray(session.policies) && session.policies.length) setPolicies(session.policies);
+
+        const s = session.settings || {};
+        if (s.systemPrompt) setSystemPrompt(s.systemPrompt);
+        if (s.selectedModel) {
+          setSelectedModel(s.selectedModel);
+          userSetModelRef.current = true;
+        }
+        if (s.chatMode) setChatMode(s.chatMode);
+        if (s.performanceMode) {
+          setPerformanceMode(s.performanceMode);
+          userSetPerfModeRef.current = true;
+        }
+        if (typeof s.inputLimitIdx === 'number') setInputLimitIdx(s.inputLimitIdx);
+        if (typeof s.outputLimitIdx === 'number') setOutputLimitIdx(s.outputLimitIdx);
+        if (Array.isArray(s.tools) && s.tools.length) {
+          setTools(s.tools.map((t: any) => ({ ...t, icon: DEFAULT_TOOLS.find(d => d.id === t.id)?.icon })));
+        }
+      } catch (error) {
+        console.error('Failed to hydrate active session:', error);
+      } finally {
+        hasHydratedRef.current = true;
+      }
+    };
+    hydrate();
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current || !isSignedIn) return;
+
+    const timeoutId = setTimeout(() => {
+      fetch('http://localhost:3001/api/sessions/active', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          policies,
+          settings: {
+            systemPrompt,
+            selectedModel,
+            chatMode,
+            performanceMode,
+            inputLimitIdx,
+            outputLimitIdx,
+            tools: tools.map(({ id, name, active }) => ({ id, name, active })),
+          },
+        }),
+      }).catch(err => console.error('Failed to save session settings:', err));
+    }, 800);
+
+    return () => clearTimeout(timeoutId);
+  }, [policies, systemPrompt, selectedModel, chatMode, performanceMode, inputLimitIdx, outputLimitIdx, tools, isSignedIn]);
 
   useEffect(() => {
     const fetchModels = async () => {
+      let ollamaModels: any[] = [];
       try {
         const response = await fetch('http://localhost:3001/api/models');
-        if (!response.ok) {
-          setShowInstallAlert(true);
-          return;
-        }
-        const data = await response.json();
-        if (data.models && data.models.length > 0) {
-          setAvailableModels(data.models);
-          setSelectedModel(data.models[0].name);
-        } else {
-          setShowInstallAlert(true);
+        if (response.ok) {
+          const data = await response.json();
+          ollamaModels = data.models || [];
         }
       } catch (error) {
+        // Ollama unreachable — Claude models below can still be used if ANTHROPIC_API_KEY is configured.
+      }
+      const models = [...ollamaModels, ...CLAUDE_MODELS];
+      setAvailableModels(models);
+      if (!userSetModelRef.current && models.length > 0) {
+        setSelectedModel(models[0].name);
+      }
+      if (ollamaModels.length === 0) {
         setShowInstallAlert(true);
       }
     };
@@ -519,6 +701,10 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const processChat = async (currentMessages: any[]) => {
     setIsLoading(true);
+    setIsGenerating(true);
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const requestStartedAt = performance.now();
     try {
       const toolPolicies = policies.reduce((acc, p) => {
         acc[p.condition] = p.status;
@@ -527,13 +713,17 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
       const response = await fetch('http://localhost:3001/api/chat', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
-          messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name })),
+          messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name, tool_call_id: m.tool_call_id })),
           systemPrompt: systemPrompt,
           model: selectedModel,
           toolPolicies,
-          performanceMode
+          performanceMode,
+          chatMode,
+          outputLimitTokens: tokenPresets[outputLimitIdx]
         })
       });
 
@@ -546,7 +736,10 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       
       const decoder = new TextDecoder('utf-8');
       
-      let aiMessage = { role: 'assistant', content: '', type: 'normal', tool_calls: [] };
+      let aiMessage: any = {
+        role: 'assistant', content: '', type: 'normal', tool_calls: [],
+        firstTokenMs: null as number | null, totalMs: null as number | null,
+      };
       let nextMessages = [...currentMessages, aiMessage];
       
       // Show empty message block immediately and stop "Thinking..." spinner
@@ -570,23 +763,30 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             const data = JSON.parse(line);
             
             if (data.type === 'content_chunk') {
+              if (aiMessage.firstTokenMs === null) {
+                aiMessage.firstTokenMs = performance.now() - requestStartedAt;
+              }
               aiMessage.content += data.content;
               setMessages([...nextMessages]);
             } else if (data.type === 'tool_call_intent') {
               aiMessage.tool_calls = data.toolCalls;
               setMessages([...nextMessages]);
             } else if (data.type === 'tool_result') {
-              const toolMsg = { role: 'tool', name: data.name, content: data.result, type: 'tool_result' };
+              const toolMsg = { role: 'tool', name: data.name, content: data.result, type: 'tool_result', tool_call_id: data.toolCallId };
               nextMessages = [...nextMessages, toolMsg];
               setMessages(nextMessages);
             } else if (data.type === 'requires_approval') {
               setPendingToolCall(data.toolCall);
               // Backend paused execution. We break out of the stream reader.
-              return; 
+              setIsGenerating(false);
+              abortControllerRef.current = null;
+              return;
             } else if (data.type === 'error') {
               console.error('Agent error:', data.error);
             } else if (data.type === 'done') {
-              // Agent loop finished natively
+              if (typeof data.contextTokens === 'number') {
+                setContextTokens(data.contextTokens);
+              }
             }
           } catch (e) {
             console.error('Error parsing NDJSON line:', line, e);
@@ -596,23 +796,34 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
       // If the stream ended and we had tools executed (but not paused), we need to check if we should continue
       // Actually, the backend loop handles continuing. So when the stream ends normally, it means 'done'.
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'system', content: 'Network error communicating with backend.', type: 'normal' }]);
+      aiMessage.totalMs = performance.now() - requestStartedAt;
+      setMessages([...nextMessages]);
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        setMessages(prev => [...prev, { role: 'system', content: 'Response stopped.', type: 'normal' }]);
+      } else {
+        console.error(error);
+        setMessages(prev => [...prev, { role: 'system', content: 'Network error communicating with backend.', type: 'normal' }]);
+      }
       setIsLoading(false);
+    } finally {
+      setIsGenerating(false);
+      abortControllerRef.current = null;
     }
   };
 
   const executeToolAndContinue = async (toolCall: any, currentMessages: any[]) => {
     setIsLoading(true);
+    setIsGenerating(true);
     try {
       const res = await fetch('http://localhost:3001/api/execute_tool', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tool_name: toolCall.function.name, arguments: toolCall.function.arguments })
       });
       const toolData = await res.json();
-      const toolMsg = { role: 'tool', content: toolData.result, type: 'tool_result', name: toolCall.function.name };
+      const toolMsg = { role: 'tool', content: toolData.result, type: 'tool_result', name: toolCall.function.name, tool_call_id: toolCall.id };
       const nextMessages = [...currentMessages, toolMsg];
       setMessages(nextMessages);
       // Resume the agent loop by calling chat again
@@ -636,7 +847,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const handleDenyTool = () => {
     if (pendingToolCall) {
-      const toolMsg = { role: 'tool', content: `Action Denied by user for ${pendingToolCall.function.name}.`, type: 'blocked', reason: `User manually denied the use of ${pendingToolCall.function.name}` };
+      const toolMsg = { role: 'tool', content: `Action Denied by user for ${pendingToolCall.function.name}.`, type: 'blocked', reason: `User manually denied the use of ${pendingToolCall.function.name}`, name: pendingToolCall.function.name, tool_call_id: pendingToolCall.id };
       const nextMessages = [...messages, toolMsg];
       setPendingToolCall(null);
       setMessages(nextMessages);
@@ -653,6 +864,10 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     processChat(nextMessages);
   };
 
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+  };
+
   useGSAP(() => {
     gsap.from('.msg-anim', {
       opacity: 0,
@@ -664,6 +879,30 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       delay: 0.3
     });
   }, { scope: chatContainer });
+
+  if (isLoaded && !isSignedIn) {
+    return (
+      <motion.div
+        className="dashboard-wrapper"
+        initial={{ opacity: 0, scale: 1.02, filter: 'blur(15px)' }}
+        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', textAlign: 'center', padding: '2rem' }}>
+          <Shield size={28} color="var(--text-muted)" />
+          <div style={{ fontWeight: 600, fontSize: '1.125rem', color: 'var(--text-color)' }}>Sign in to chat</div>
+          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: 360 }}>
+            Orb remembers facts about you across conversations, so chatting requires a signed-in account.
+          </div>
+          <SignInButton mode="modal">
+            <button className="btn-pill" style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem' }}>Sign In</button>
+          </SignInButton>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -709,7 +948,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </motion.div>
         )}
       </AnimatePresence>
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div className="dashboard-content">
         {/* Left Panel */}
@@ -735,18 +974,36 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               <div className="stat-item glass-panel">
                 <div className="stat-item-header">
                   <span>Hallucination Risk</span>
-                  {hallucinationRisk > 10 ? (
-                    <motion.div className="status-indicator" animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-                      <div className="status-dot red"></div> High
-                    </motion.div>
-                  ) : (
-                    <div className="status-indicator">
-                      <div className="status-dot green"></div> Nominal
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button className="icon-btn" onClick={refreshActiveSession} title="Refresh"><RefreshCw size={14} /></button>
+                    {hallucinationRisk > 10 ? (
+                      <motion.div className="status-indicator" animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+                        <div className="status-dot red"></div> High
+                      </motion.div>
+                    ) : (
+                      <div className="status-indicator">
+                        <div className="status-dot green"></div> Nominal
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="stat-value-large" style={{ color: hallucinationRisk > 10 ? 'var(--danger-color)' : 'var(--text-color)' }}>
                   {hallucinationRisk}<span style={{ fontSize: '1.5rem', fontWeight: 500 }}>%</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  {messagesWithRisk.length ? `Avg over ${messagesWithRisk.length} scored ${messagesWithRisk.length === 1 ? 'reply' : 'replies'}` : 'Scores land ~1-2 min after each reply — hit refresh'}
+                </div>
+              </div>
+
+              <div className="stat-item glass-panel">
+                <div className="stat-item-header">
+                  <span>Avg Latency</span>
+                </div>
+                <div className="stat-value-large" style={{ color: 'var(--text-color)' }}>
+                  {avgLatencyMs != null ? (avgLatencyMs / 1000).toFixed(2) : '—'}<span style={{ fontSize: '1.5rem', fontWeight: 500 }}>s</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  {messagesWithLatency.length ? `Avg over ${messagesWithLatency.length} ${messagesWithLatency.length === 1 ? 'reply' : 'replies'} this session` : 'No replies yet'}
                 </div>
               </div>
 
@@ -759,6 +1016,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       <div style={{ fontSize: '1rem', fontWeight: 600 }}>{tokenPresets[inputLimitIdx]}</div>
                     </div>
                     <input type="range" className="range-slider" min={0} max={tokenPresets.length - 1} value={inputLimitIdx} onChange={(e) => setInputLimitIdx(Number(e.target.value))} />
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.375rem' }}>Not yet enforced — reserved for a future context-trimming feature.</div>
                   </div>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -766,6 +1024,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       <div style={{ fontSize: '1rem', fontWeight: 600 }}>{tokenPresets[outputLimitIdx]}</div>
                     </div>
                     <input type="range" className="range-slider" min={0} max={tokenPresets.length - 1} value={outputLimitIdx} onChange={(e) => setOutputLimitIdx(Number(e.target.value))} />
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.375rem' }}>Sent to the model as a soft target it's asked to wrap up within, with a generous hard backstop so it can't run away.</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
@@ -781,6 +1040,11 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                           {m === 'low' ? 'Low' : 'High'}
                         </button>
                       ))}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: 1.5 }}>
+                      {PERFORMANCE_PROFILE_INFO[performanceMode].summary}
+                      <br />
+                      {userSetPerfModeRef.current ? 'Manually set' : 'Auto-selected for this system'}
                     </div>
                   </div>
                 </div>
@@ -848,7 +1112,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         <motion.main layout className="glass-panel dash-panel dash-center">
           <motion.div layout="position" className="dash-title" style={{ paddingBottom: '1.5rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-              <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>Hello Hari</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>Hello {user?.firstName || 'there'}</span>
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
@@ -861,13 +1125,29 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                 )}
               </select>
               <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <div className="telemetry-chip">
+                  <span>Ctx:</span>
+                  <div className="ctx-bar">
+                    <div
+                      className={`ctx-bar-fill ${ctxPercent >= 90 ? 'ctx-danger' : ctxPercent >= 70 ? 'ctx-warn' : ''}`}
+                      style={{ width: `${ctxPercent}%` }}
+                    />
+                  </div>
+                  <span style={{ color: ctxPercent >= 90 ? 'var(--danger-color)' : ctxPercent >= 70 ? 'var(--warning-color)' : 'var(--success-color)' }}>
+                    {ctxPercent}%
+                  </span>
+                </div>
                 <div className="telemetry-chip"><Shield size={14} color="var(--success-color)" /> <span>1,204 Actions Blocked</span></div>
-                <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>42.1k Tokens Saved</span></div>
               </div>
             </div>
-            <button className="subtle-btn" onClick={() => handleNavigate('sessions')}>
-              View all sessions
-            </button>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="subtle-btn" onClick={handleNewChat}>
+                New Chat
+              </button>
+              <button className="subtle-btn" onClick={() => handleNavigate('sessions')}>
+                View all sessions
+              </button>
+            </div>
           </motion.div>
 
           <div className="chat-container" ref={chatContainer}>
@@ -923,6 +1203,13 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       ) : msg.content}
                     </div>
                   )}
+                  {msg.role === 'assistant' && msg.totalMs != null && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '0.375rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <Clock size={12} />
+                      {msg.firstTokenMs != null && <span>first token {(msg.firstTokenMs / 1000).toFixed(2)}s ·</span>}
+                      <span>total {(msg.totalMs / 1000).toFixed(2)}s</span>
+                    </div>
+                  )}
                   {msg.tool_calls && msg.tool_calls.length > 0 && (
                     <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem', padding: '0.5rem', background: 'var(--panel-bg)', borderRadius: '8px' }}>
                       <Zap size={14} style={{ display: 'inline', marginRight: '6px' }} />
@@ -953,13 +1240,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               )}
               {isLoading && (
                 <div className="msg msg-ai msg-anim">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Sparkles size={12} color="#fff" />
-                    </div>
-                    <strong>{selectedModel}</strong>
-                  </div>
-                  <div className="msg-content">Thinking...</div>
+                  <ThinkingIndicator />
                 </div>
               )}
             </div>
@@ -973,14 +1254,24 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             >
               <div className="chat-input-toolbar">
                 <div className="mode-switcher">
-                  {['Ask', 'Search', 'Research'].map(mode => (
-                    <button key={mode} className={`mode-btn ${chatMode === mode ? 'active' : ''}`} onClick={() => setChatMode(mode)}>
-                      {mode === 'Ask' && <MessageSquare size={14} style={{ display: 'inline', marginRight: '6px' }} />}
-                      {mode === 'Search' && <Search size={14} style={{ display: 'inline', marginRight: '6px' }} />}
-                      {mode === 'Research' && <Sparkles size={14} style={{ display: 'inline', marginRight: '6px' }} />}
-                      {mode}
-                    </button>
-                  ))}
+                  {[
+                    { mode: 'Auto', icon: RefreshCw, color: 'var(--danger-color)' },
+                    { mode: 'Policy', icon: Shield, color: 'var(--warning-color)' },
+                    { mode: 'Manual', icon: MessageSquare, color: 'var(--accent-color)' },
+                  ].map(({ mode, icon: Icon, color }) => {
+                    const isActive = chatMode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        className={`mode-btn ${isActive ? 'active' : ''}`}
+                        onClick={() => setChatMode(mode)}
+                        style={isActive ? { color, boxShadow: `0 0 0 1px ${color}` } : undefined}
+                      >
+                        <Icon size={14} style={{ display: 'inline', marginRight: '6px' }} />
+                        {mode}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="chat-input-row">
@@ -991,9 +1282,15 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                 />
-                <button className="send-btn" onClick={handleSendMessage} disabled={isLoading}>
-                  <Send size={18} />
-                </button>
+                {isGenerating ? (
+                  <button className="send-btn" onClick={handleStop} style={{ background: 'var(--danger-color)' }} title="Stop generating">
+                    <Square size={16} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button className="send-btn" onClick={handleSendMessage}>
+                    <Send size={18} />
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>
@@ -1104,6 +1401,35 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 };
 
 const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded } = useUser();
+  const [sessions, setSessions] = useState<any[]>([]);
+
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/sessions', { credentials: 'include' });
+      if (!res.ok) { setSessions([]); return; }
+      const data = await res.json();
+      setSessions(data);
+    } catch (error) {
+      console.error(error);
+      setSessions([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchSessions();
+    else setSessions([]);
+  }, [isSignedIn]);
+
+  const handleResume = async (id: number) => {
+    try {
+      await fetch(`http://localhost:3001/api/sessions/${id}/resume`, { method: 'POST', credentials: 'include' });
+      handleNavigate('app');
+    } catch (error) {
+      console.error('Failed to resume session:', error);
+    }
+  };
+
   return (
     <motion.div
       className="dashboard-wrapper"
@@ -1112,7 +1438,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
         <div className="dash-title" style={{ paddingBottom: '2rem' }}>
@@ -1122,36 +1448,43 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </div>
         </div>
 
-        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '1rem' }}>
-          {[
-            { id: 1, title: 'System upgrade and dependency check', date: 'Today, 10:24 AM', tokens: '14.2k', risk: '14.5%', status: 'Blocked Actions' },
-            { id: 2, title: 'Analyze frontend bundle size', date: 'Yesterday, 4:12 PM', tokens: '8.4k', risk: '2.1%', status: 'Completed' },
-            { id: 3, title: 'Refactor user authentication flow', date: 'Jul 19, 2:45 PM', tokens: '32.1k', risk: '8.4%', status: 'Completed' },
-            { id: 4, title: 'Scan home directory for large files', date: 'Jul 18, 9:15 AM', tokens: '4.2k', risk: '1.2%', status: 'Completed' },
-          ].map(session => (
-            <div key={session.id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-color)' }}>{session.title}</h3>
-                <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{session.date}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <div className="telemetry-chip"><Zap size={14} color="var(--warning-color)" /> <span>{session.tokens}</span></div>
-                  <div className="telemetry-chip"><TriangleAlert size={14} color="var(--danger-color)" /> <span>{session.risk}</span></div>
+        {!isLoaded ? null : !isSignedIn ? (
+          <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <MessageSquare size={28} color="var(--text-muted)" />
+            <div style={{ fontWeight: 600, color: 'var(--text-color)' }}>Sign in to view your sessions</div>
+            <SignInButton mode="modal">
+              <button className="btn-pill" style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem' }}>Sign In</button>
+            </SignInButton>
+          </div>
+        ) : (
+          <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '1rem' }}>
+            {sessions.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No sessions yet. Start chatting to create one.</div>}
+            {sessions.map((session: any) => (
+              <div key={session.id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => handleResume(session.id)}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-color)' }}>{session.title}</h3>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{new Date(session.updated_at).toLocaleString()}</div>
                 </div>
-                <div className="status-indicator">
-                  {session.status === 'Completed' ? <><div className="status-dot green"></div> {session.status}</> : <><div className="status-dot red"></div> {session.status}</>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <div className="telemetry-chip"><Clock size={14} color="var(--warning-color)" /> <span>{session.avgLatencyMs != null ? `${(session.avgLatencyMs / 1000).toFixed(1)}s avg` : '—'}</span></div>
+                    <div className="telemetry-chip"><TriangleAlert size={14} color="var(--danger-color)" /> <span>{session.avgRiskScore != null ? `${session.avgRiskScore}% risk` : '—'}</span></div>
+                  </div>
+                  <div className="status-indicator">
+                    {session.status === 'active' ? <><div className="status-dot green"></div> Active</> : <><div className="status-dot green"></div> Completed</>}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </motion.div>
   );
 };
 
 const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded } = useUser();
   const baseUrl = 'http://localhost:3001/api/v1';
   const [copied, setCopied] = useState(false);
 
@@ -1159,6 +1492,52 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     navigator.clipboard.writeText(baseUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const [connectors, setConnectors] = useState<any[]>([]);
+  const [connectorInputs, setConnectorInputs] = useState<Record<string, string>>({});
+  const [savingConnector, setSavingConnector] = useState<string | null>(null);
+
+  const fetchConnectors = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/connectors', { credentials: 'include' });
+      if (!res.ok) { setConnectors([]); return; }
+      setConnectors(await res.json());
+    } catch (error) {
+      console.error(error);
+      setConnectors([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchConnectors();
+    else setConnectors([]);
+  }, [isSignedIn]);
+
+  const handleSaveConnector = async (provider: string) => {
+    const apiKey = connectorInputs[provider]?.trim();
+    if (!apiKey) return;
+    setSavingConnector(provider);
+    try {
+      await fetch('http://localhost:3001/api/connectors', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, apiKey }),
+      });
+      setConnectorInputs({ ...connectorInputs, [provider]: '' });
+      fetchConnectors();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSavingConnector(null);
+    }
+  };
+
+  const handleRemoveConnector = async (provider: string) => {
+    if (!window.confirm('Remove this connector\'s stored API key?')) return;
+    await fetch(`http://localhost:3001/api/connectors/${provider}`, { method: 'DELETE', credentials: 'include' });
+    fetchConnectors();
   };
 
   const [keys, setKeys] = useState<any[]>([]);
@@ -1169,17 +1548,20 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const fetchKeys = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/keys');
+      const res = await fetch('http://localhost:3001/api/keys', { credentials: 'include' });
+      if (!res.ok) { setKeys([]); return; }
       const data = await res.json();
       setKeys(data);
     } catch (error) {
       console.error(error);
+      setKeys([]);
     }
   };
 
   useEffect(() => {
-    fetchKeys();
-  }, []);
+    if (isSignedIn) fetchKeys();
+    else setKeys([]);
+  }, [isSignedIn]);
 
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return;
@@ -1187,9 +1569,11 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     try {
       const res = await fetch('http://localhost:3001/api/keys', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newKeyName, tools: newKeyTools }),
       });
+      if (!res.ok) { console.error('Failed to create key:', await res.text()); return; }
       const data = await res.json();
       setCreatedKey(data);
       setNewKeyName('');
@@ -1204,7 +1588,7 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const handleRevoke = async (id: number) => {
     if (!window.confirm('Revoke this API key? This cannot be undone.')) return;
-    await fetch(`http://localhost:3001/api/keys/${id}`, { method: 'DELETE' });
+    await fetch(`http://localhost:3001/api/keys/${id}`, { method: 'DELETE', credentials: 'include' });
     fetchKeys();
   };
 
@@ -1220,17 +1604,38 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const fetchAuditLogs = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/audit-logs?limit=50');
+      const res = await fetch('http://localhost:3001/api/audit-logs?limit=50', { credentials: 'include' });
+      if (!res.ok) { setAuditLogs([]); return; }
       const data = await res.json();
       setAuditLogs(data);
     } catch (error) {
       console.error(error);
+      setAuditLogs([]);
     }
   };
 
   useEffect(() => {
-    fetchAuditLogs();
-  }, []);
+    if (isSignedIn) fetchAuditLogs();
+    else setAuditLogs([]);
+  }, [isSignedIn]);
+
+  const [analytics, setAnalytics] = useState<any>(null);
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/analytics/summary?hours=24', { credentials: 'include' });
+      if (!res.ok) { setAnalytics(null); return; }
+      setAnalytics(await res.json());
+    } catch (error) {
+      console.error(error);
+      setAnalytics(null);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchAnalytics();
+    else setAnalytics(null);
+  }, [isSignedIn]);
 
   return (
     <motion.div
@@ -1240,7 +1645,7 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>
@@ -1258,6 +1663,52 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           <button className="icon-btn" onClick={handleCopyBaseUrl}>{copied ? 'Copied!' : <FileText size={16} />}</button>
         </div>
 
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div className="dash-title-small" style={{ marginBottom: '0.25rem' }}>Model Connectors</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Connect additional model providers alongside your local Ollama models. Keys are stored locally and never leave this machine.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {connectors.map(c => (
+              <div key={c.provider} className="rule-row" style={{ alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div className="rule-row-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {c.name}
+                    <div className="status-indicator">
+                      <div className={`status-dot ${c.configured ? 'green' : 'yellow'}`}></div>
+                      {c.configured ? `Connected${c.source === 'environment' ? ' (via .env)' : ''}` : 'Not connected'}
+                    </div>
+                  </div>
+                  {c.configured ? (
+                    <div className="rule-row-desc">{c.maskedKey}</div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <input
+                        type="password"
+                        className="form-input"
+                        placeholder="Paste API key"
+                        value={connectorInputs[c.provider] || ''}
+                        onChange={(e) => setConnectorInputs({ ...connectorInputs, [c.provider]: e.target.value })}
+                      />
+                      <button
+                        className="btn-pill"
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', whiteSpace: 'nowrap' }}
+                        onClick={() => handleSaveConnector(c.provider)}
+                        disabled={!connectorInputs[c.provider]?.trim() || savingConnector === c.provider}
+                      >
+                        Connect
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {c.configured && c.source === 'database' && (
+                  <button className="icon-btn" onClick={() => handleRemoveConnector(c.provider)}><X size={16} /></button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         {createdKey && (
           <div className="glass-panel" style={{ padding: '1.5rem', border: '1px solid var(--warning-color)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -1271,68 +1722,234 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </div>
         )}
 
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Create New Key</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <input type="text" className="form-input" placeholder="Key name, e.g. my-script" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} style={{ flex: 1 }} />
-              <button className="icon-btn" title="Generate random name" onClick={generateRandomName}><Sparkles size={16} /></button>
+        {!isLoaded ? null : !isSignedIn ? (
+          <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <Shield size={28} color="var(--text-muted)" />
+            <div style={{ fontWeight: 600, color: 'var(--text-color)' }}>Sign in to manage API keys</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: 360 }}>
+              Key creation, revocation, and audit history are only visible to a signed-in account.
             </div>
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
-              {(['fs', 'bash', 'web'] as const).map(flag => (
-                <label key={flag} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-color)' }}>
-                  <input type="checkbox" checked={newKeyTools[flag]} onChange={(e) => setNewKeyTools({ ...newKeyTools, [flag]: e.target.checked })} />
-                  {flag === 'fs' ? 'Local FS' : flag === 'bash' ? 'Bash Exec' : 'Web Search'}
-                </label>
+            <SignInButton mode="modal">
+              <button className="btn-pill" style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem' }}>Sign In</button>
+            </SignInButton>
+          </div>
+        ) : (
+          <>
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Create New Key</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input type="text" className="form-input" placeholder="Key name, e.g. my-script" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} style={{ flex: 1 }} />
+                  <button className="icon-btn" title="Generate random name" onClick={generateRandomName}><Sparkles size={16} /></button>
+                </div>
+                <div style={{ display: 'flex', gap: '1.5rem' }}>
+                  {(['fs', 'bash', 'web'] as const).map(flag => (
+                    <label key={flag} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-color)' }}>
+                      <input type="checkbox" checked={newKeyTools[flag]} onChange={(e) => setNewKeyTools({ ...newKeyTools, [flag]: e.target.checked })} />
+                      {flag === 'fs' ? 'Local FS' : flag === 'bash' ? 'Bash Exec' : 'Web Search'}
+                    </label>
+                  ))}
+                </div>
+                <button className="btn-pill" style={{ alignSelf: 'flex-start', padding: '0.75rem 1.5rem' }} onClick={handleCreateKey} disabled={!newKeyName.trim() || isCreating}>Create Key</button>
+              </div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Active Keys</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {keys.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No keys yet.</div>}
+                {keys.map(k => (
+                  <div key={k.id} className="rule-row">
+                    <div>
+                      <div className="rule-row-title">{k.name} <code style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.maskedKey}</code></div>
+                      <div className="rule-row-desc">
+                        {Object.entries(k.tools).filter(([, v]) => v).map(([t]) => t).join(', ') || 'no tools enabled'}
+                        {k.revoked_at ? ' · revoked' : ''}
+                      </div>
+                    </div>
+                    {!k.revoked_at && (
+                      <button className="icon-btn" onClick={() => handleRevoke(k.id)}><X size={16} /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div className="dash-title-small">Analytics (last 24h)</div>
+                <button className="icon-btn" onClick={fetchAnalytics}><RefreshCw size={14} /></button>
+              </div>
+
+              {analytics && analytics.anomalies.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                  {analytics.anomalies.map((a: any, i: number) => (
+                    <div key={i} className="action-card" style={{ borderColor: a.severity === 'critical' ? 'var(--danger-color)' : 'var(--warning-color)' }}>
+                      <h4 style={{ color: a.severity === 'critical' ? 'var(--danger-color)' : 'var(--warning-color)' }}>
+                        <TriangleAlert size={16} /> {a.severity === 'critical' ? 'Critical' : 'Warning'}
+                      </h4>
+                      <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{a.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header"><span>Total Requests</span></div>
+                  <div className="stat-value-large">{analytics?.totalRequests ?? '—'}</div>
+                </div>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header"><span>Blocked</span></div>
+                  <div className="stat-value-large" style={{ color: (analytics?.blockedCount ?? 0) > 0 ? 'var(--warning-color)' : 'var(--text-color)' }}>{analytics?.blockedCount ?? '—'}</div>
+                </div>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header"><span>Errors</span></div>
+                  <div className="stat-value-large" style={{ color: (analytics?.errorCount ?? 0) > 0 ? 'var(--danger-color)' : 'var(--text-color)' }}>{analytics?.errorCount ?? '—'}</div>
+                </div>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header"><span>Avg Latency</span></div>
+                  <div className="stat-value-large">{analytics ? `${(analytics.avgLatencyMs / 1000).toFixed(2)}s` : '—'}</div>
+                </div>
+              </div>
+
+              {analytics && analytics.hourlyVolume.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Request volume by hour</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '60px' }}>
+                    {analytics.hourlyVolume.map((h: any, i: number) => {
+                      const max = Math.max(...analytics.hourlyVolume.map((x: any) => x.count));
+                      return (
+                        <div
+                          key={i}
+                          title={`${h.hour}: ${h.count} requests`}
+                          style={{ flex: 1, minWidth: 4, height: `${Math.max(6, (h.count / max) * 100)}%`, background: 'var(--accent-gradient)', borderRadius: '3px 3px 0 0' }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {analytics && analytics.topTools.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Most-used tools</div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {analytics.topTools.map((t: any) => (
+                      <div key={t.name} className="telemetry-chip"><Zap size={14} color="var(--accent-color)" /> <span>{t.name} · {t.count}</span></div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div className="dash-title-small">Recent API Activity</div>
+                <button className="icon-btn" onClick={fetchAuditLogs}>Refresh</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {auditLogs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No API activity yet.</div>}
+                {auditLogs.map(log => (
+                  <div key={log.id} className="rule-row">
+                    <div>
+                      <div className="rule-row-title">{log.key_name} → {log.endpoint}</div>
+                      <div className="rule-row-desc">
+                        {new Date(log.timestamp).toLocaleString()} · {JSON.parse(log.tool_calls || '[]').map((t: any) => t.function?.name).join(', ') || 'no tools'} · {log.latency_ms}ms
+                      </div>
+                    </div>
+                    <div className="status-indicator">
+                      <div className={`status-dot ${log.status_code === 200 ? 'green' : 'red'}`}></div> {log.status_code}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+const MemoryScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded } = useUser();
+  const [memories, setMemories] = useState<any[]>([]);
+
+  const fetchMemories = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/memories', { credentials: 'include' });
+      if (!res.ok) { setMemories([]); return; }
+      const data = await res.json();
+      setMemories(data);
+    } catch (error) {
+      console.error(error);
+      setMemories([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchMemories();
+    else setMemories([]);
+  }, [isSignedIn]);
+
+  const handleDelete = async (id: number) => {
+    await fetch(`http://localhost:3001/api/memories/${id}`, { method: 'DELETE', credentials: 'include' });
+    fetchMemories();
+  };
+
+  return (
+    <motion.div
+      className="dashboard-wrapper"
+      initial={{ opacity: 0, scale: 0.98, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+      transition={{ duration: 0.4 }}
+    >
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+
+      <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="dash-title" style={{ paddingBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button className="icon-btn" onClick={() => handleNavigate('app')}><ChevronLeft size={20} /></button>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-color)' }}>Memory</h1>
+          </div>
+        </div>
+
+        {!isLoaded ? null : !isSignedIn ? (
+          <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+            <Brain size={28} color="var(--text-muted)" />
+            <div style={{ fontWeight: 600, color: 'var(--text-color)' }}>Sign in to view your memory</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: 360 }}>
+              Facts Orb remembers about you across conversations are only visible to a signed-in account.
+            </div>
+            <SignInButton mode="modal">
+              <button className="btn-pill" style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem' }}>Sign In</button>
+            </SignInButton>
+          </div>
+        ) : (
+          <div className="glass-panel" style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div className="dash-title-small">What Orb remembers</div>
+              <button className="icon-btn" onClick={fetchMemories} title="Refresh">Refresh</button>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '-0.5rem', marginBottom: '1rem' }}>
+              New facts are extracted in the background after a reply and can take up to a minute or two to show up — hit Refresh if you don't see something yet.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {memories.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nothing remembered yet.</div>}
+              {memories.map((m: any) => (
+                <div key={m.id} className="rule-row">
+                  <div>
+                    <div className="rule-row-title">{m.content}</div>
+                    <div className="rule-row-desc">{new Date(m.created_at).toLocaleString()}</div>
+                  </div>
+                  <button className="icon-btn" onClick={() => handleDelete(m.id)}><X size={16} /></button>
+                </div>
               ))}
             </div>
-            <button className="btn-pill" style={{ alignSelf: 'flex-start', padding: '0.75rem 1.5rem' }} onClick={handleCreateKey} disabled={!newKeyName.trim() || isCreating}>Create Key</button>
           </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <div className="dash-title-small" style={{ marginBottom: '1rem' }}>Active Keys</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {keys.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No keys yet.</div>}
-            {keys.map(k => (
-              <div key={k.id} className="rule-row">
-                <div>
-                  <div className="rule-row-title">{k.name} <code style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{k.maskedKey}</code></div>
-                  <div className="rule-row-desc">
-                    {Object.entries(k.tools).filter(([, v]) => v).map(([t]) => t).join(', ') || 'no tools enabled'}
-                    {k.revoked_at ? ' · revoked' : ''}
-                  </div>
-                </div>
-                {!k.revoked_at && (
-                  <button className="icon-btn" onClick={() => handleRevoke(k.id)}><X size={16} /></button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <div className="dash-title-small">Recent API Activity</div>
-            <button className="icon-btn" onClick={fetchAuditLogs}>Refresh</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {auditLogs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No API activity yet.</div>}
-            {auditLogs.map(log => (
-              <div key={log.id} className="rule-row">
-                <div>
-                  <div className="rule-row-title">{log.key_name} → {log.endpoint}</div>
-                  <div className="rule-row-desc">
-                    {new Date(log.timestamp).toLocaleString()} · {JSON.parse(log.tool_calls || '[]').map((t: any) => t.function?.name).join(', ') || 'no tools'} · {log.latency_ms}ms
-                  </div>
-                </div>
-                <div className="status-indicator">
-                  <div className={`status-dot ${log.status_code === 200 ? 'green' : 'red'}`}></div> {log.status_code}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
     </motion.div>
   );

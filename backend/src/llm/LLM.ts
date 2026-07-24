@@ -10,5 +10,5 @@ export interface LLM {
   /**
    * Send a chat request and get a readable stream of NDJSON strings or raw bytes.
    */
-  chatStream(messages: Message[], tools?: ToolSchema[], systemPrompt?: string): Promise<NodeJS.ReadableStream>;
+  chatStream(messages: Message[], tools?: ToolSchema[], systemPrompt?: string, signal?: AbortSignal): Promise<NodeJS.ReadableStream>;
 }

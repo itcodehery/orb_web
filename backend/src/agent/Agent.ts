@@ -19,8 +19,9 @@ export class Agent {
     systemPrompt: string,
     streamCallback: (chunk: any) => void,
     getPolicyStatus: (toolName: string) => string,
-    performanceMode: PerformanceMode = 'high'
-  ) {
+    performanceMode: PerformanceMode = 'high',
+    signal?: AbortSignal
+  ): Promise<{ finalReply: string | null }> {
     let currentMessages = [...messages];
 
     const { maxHistoryMessages } = PERFORMANCE_PROFILES[performanceMode];
@@ -29,17 +30,23 @@ export class Agent {
     }
 
     while (true) {
+      if (signal?.aborted) {
+        return { finalReply: null };
+      }
+
       const responseStream = await this.llm.chatStream(
         currentMessages,
         this.registry.getSchemas(),
-        systemPrompt
+        systemPrompt,
+        signal
       );
 
       let fullContent = '';
       let toolCalls: ToolCall[] = [];
+      let contextTokens = 0;
 
       const decoder = new TextDecoder('utf-8');
-      
+
       // Async iterator over the web stream
       for await (const chunk of (responseStream as any)) {
         const decoded = decoder.decode(chunk, { stream: true });
@@ -60,6 +67,11 @@ export class Agent {
                 // but in streaming it might accumulate them. We will just capture the ones sent.
                 toolCalls = data.message.tool_calls;
               }
+            }
+            // Ollama's final chunk (done: true) reports how many tokens of the
+            // context window this turn actually used.
+            if (data.done && typeof data.prompt_eval_count === 'number') {
+              contextTokens = data.prompt_eval_count + (data.eval_count || 0);
             }
           } catch (e) {
             // Ignore parse errors on incomplete chunks
@@ -84,18 +96,18 @@ export class Agent {
 
           if (policy === 'Blocked') {
             const blockMsg = `Action Blocked: Policy enforces blocking for ${toolCall.function.name}.`;
-            currentMessages.push({ role: 'tool', name: toolCall.function.name, content: blockMsg });
-            streamCallback({ type: 'tool_result', name: toolCall.function.name, result: blockMsg });
+            currentMessages.push({ role: 'tool', name: toolCall.function.name, content: blockMsg, tool_call_id: toolCall.id });
+            streamCallback({ type: 'tool_result', name: toolCall.function.name, result: blockMsg, toolCallId: toolCall.id });
           } else if (policy === 'Requires Approval') {
             // Pause loop and yield back to client
             streamCallback({ type: 'requires_approval', toolCall });
             // End the current run. The client must resume.
-            return;
+            return { finalReply: null };
           } else {
             // Execute immediately
             const result = await this.executor.execute(toolCall);
-            currentMessages.push({ role: 'tool', name: toolCall.function.name, content: result });
-            streamCallback({ type: 'tool_result', name: toolCall.function.name, result });
+            currentMessages.push({ role: 'tool', name: toolCall.function.name, content: result, tool_call_id: toolCall.id });
+            streamCallback({ type: 'tool_result', name: toolCall.function.name, result, toolCallId: toolCall.id });
           }
         }
 
@@ -104,8 +116,8 @@ export class Agent {
       }
 
       // No tool calls, meaning the LLM has given its final answer
-      streamCallback({ type: 'done' });
-      break;
+      streamCallback({ type: 'done', contextTokens });
+      return { finalReply: fullContent || null };
     }
   }
 }

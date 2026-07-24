@@ -10,10 +10,10 @@ import { Message, ToolCall } from '../../types';
 
 const router = Router();
 
-const TOOL_NAME_BY_FLAG: Record<'fs' | 'bash' | 'web', string> = {
-  fs: 'read_file',
-  bash: 'execute_bash',
-  web: 'web_search',
+const TOOL_NAMES_BY_FLAG: Record<'fs' | 'bash' | 'web', string[]> = {
+  fs: ['read_file', 'write_file', 'list_directory'],
+  bash: ['execute_bash'],
+  web: ['web_search'],
 };
 
 router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
@@ -32,9 +32,9 @@ router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
   const combinedSystemPrompt = (systemPrompt || '') + TOOL_USE_DIRECTIVE;
 
   const enabledToolNames = new Set(
-    (Object.keys(TOOL_NAME_BY_FLAG) as Array<'fs' | 'bash' | 'web'>)
+    (Object.keys(TOOL_NAMES_BY_FLAG) as Array<'fs' | 'bash' | 'web'>)
       .filter((flag) => apiKey.tools[flag])
-      .map((flag) => TOOL_NAME_BY_FLAG[flag])
+      .flatMap((flag) => TOOL_NAMES_BY_FLAG[flag])
   );
 
   const policyDecisions: Record<string, string> = {};

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/requireAuth';
 import { createKey, listKeys, revokeKey, updateKeyTools, ToolsEnabled } from '../db/apiKeys.repo';
-import { listLogs } from '../db/auditLog.repo';
+import { listLogs, getAnalyticsSummary } from '../db/auditLog.repo';
 
 const router = Router();
 
@@ -43,6 +43,11 @@ router.patch('/keys/:id/tools', requireAuth, (req: Request, res: Response) => {
 router.get('/audit-logs', requireAuth, (req: Request, res: Response) => {
   const limit = req.query.limit ? Number(req.query.limit) : 50;
   res.json(listLogs(limit));
+});
+
+router.get('/analytics/summary', requireAuth, (req: Request, res: Response) => {
+  const hours = req.query.hours ? Number(req.query.hours) : 24;
+  res.json(getAnalyticsSummary(hours));
 });
 
 export default router;

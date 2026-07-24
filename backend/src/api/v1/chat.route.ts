@@ -5,6 +5,7 @@ import { registry, executor } from '../../agent/sharedInstances';
 import { resolvePerformanceMode } from '../../llm/performanceModes';
 import { apiKeyAuth } from '../../middleware/apiKeyAuth';
 import { insertLog } from '../../db/auditLog.repo';
+import { TOOL_USE_DIRECTIVE } from '../../agent/systemPrompt';
 import { Message, ToolCall } from '../../types';
 
 const router = Router();
@@ -28,6 +29,7 @@ router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
   const mode = resolvePerformanceMode(performanceMode);
   const llm = new Ollama(model, mode);
   const agent = new Agent(llm, registry, executor);
+  const combinedSystemPrompt = (systemPrompt || '') + TOOL_USE_DIRECTIVE;
 
   const enabledToolNames = new Set(
     (Object.keys(TOOL_NAME_BY_FLAG) as Array<'fs' | 'bash' | 'web'>)
@@ -64,7 +66,7 @@ router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
   };
 
   try {
-    await agent.run(messages as Message[], systemPrompt, streamCallback, getPolicyStatus, mode);
+    await agent.run(messages as Message[], combinedSystemPrompt, streamCallback, getPolicyStatus, mode);
   } catch (error: any) {
     statusCode = 500;
     streamCallback({ type: 'error', error: error.message });

@@ -19,7 +19,8 @@ export class Agent {
     systemPrompt: string,
     streamCallback: (chunk: any) => void,
     getPolicyStatus: (toolName: string) => string,
-    performanceMode: PerformanceMode = 'high'
+    performanceMode: PerformanceMode = 'high',
+    signal?: AbortSignal
   ): Promise<{ finalReply: string | null }> {
     let currentMessages = [...messages];
 
@@ -29,10 +30,15 @@ export class Agent {
     }
 
     while (true) {
+      if (signal?.aborted) {
+        return { finalReply: null };
+      }
+
       const responseStream = await this.llm.chatStream(
         currentMessages,
         this.registry.getSchemas(),
-        systemPrompt
+        systemPrompt,
+        signal
       );
 
       let fullContent = '';

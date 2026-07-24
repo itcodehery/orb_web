@@ -5,8 +5,8 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import {
   ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, Shield, Zap,
-  Cpu, Terminal, Search, Send, Plus, X, Globe, FileText, Sun, Moon,
-  MessageSquare, Sparkles, Code, Clock, Brain, RefreshCw
+  Cpu, Terminal, Send, Plus, X, Globe, FileText, Sun, Moon,
+  MessageSquare, Sparkles, Code, Clock, Brain, RefreshCw, Square
 } from 'lucide-react';
 import { SignInButton, SignUpButton, Show, UserButton, useUser } from '@clerk/nextjs';
 import ReactMarkdown from 'react-markdown';
@@ -17,8 +17,8 @@ gsap.registerPlugin(useGSAP);
 
 // Mirrors backend/src/llm/performanceModes.ts PERFORMANCE_PROFILES — keep in sync if those change.
 const PERFORMANCE_PROFILE_INFO: Record<'low' | 'high', { summary: string; ctxSize: number }> = {
-  low: { summary: '2K context · 512 tok response cap · 12-message history · model unloads after 1m idle', ctxSize: 2048 },
-  high: { summary: '8K context · unlimited response · full history · model stays loaded 30m idle', ctxSize: 8192 },
+  low: { summary: '2K context · 12-message history · model unloads after 1m idle · response length governed by Output Limit (hard backstop ~1.5×, capped for this tier)', ctxSize: 2048 },
+  high: { summary: '8K context · full history · model stays loaded 30m idle · response length governed by Output Limit (hard backstop ~2×)', ctxSize: 8192 },
 };
 
 // Icons aren't JSON-serializable, so persisted session settings only ever carry
@@ -64,7 +64,7 @@ export default function Home() {
   );
 }
 
-const Appbar = ({ onLogoClick, onApiClick, onMemoryClick, isDarkMode, setIsDarkMode }: any) => (
+const Appbar = ({ onLogoClick, onChatClick, onApiClick, onMemoryClick, isDarkMode, setIsDarkMode }: any) => (
   <nav className="app-nav">
     <motion.div
       className="logo"
@@ -76,9 +76,12 @@ const Appbar = ({ onLogoClick, onApiClick, onMemoryClick, isDarkMode, setIsDarkM
       orb.
     </motion.div>
     <div style={{ display: 'flex', gap: '2rem', fontSize: '0.875rem', fontWeight: 600, alignItems: 'center' }}>
-      <span>Work</span>
-      <span>About</span>
-      <span>Info</span>
+      <button
+        onClick={onChatClick}
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+      >
+        <MessageSquare size={16} /> Chat
+      </button>
       <button
         onClick={onApiClick}
         title="API Access"
@@ -125,7 +128,7 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     >
       {/* Navigation */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
-        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
       </div>
 
       {/* HERO SECTION */}
@@ -379,6 +382,35 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   );
 };
 
+const ThinkingIndicator = () => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+    <div style={{ position: 'relative', width: 24, height: 24 }}>
+      <motion.div
+        style={{ position: 'absolute', inset: -7, borderRadius: '50%', background: 'var(--accent-gradient)', filter: 'blur(8px)' }}
+        animate={{ opacity: [0.25, 0.65, 0.25], scale: [0.85, 1.2, 0.85] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
+      >
+        <Sparkles size={12} color="#fff" />
+      </motion.div>
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      {[0, 1, 2].map(i => (
+        <motion.span
+          key={i}
+          style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-color)', display: 'inline-block' }}
+          animate={{ y: [0, -6, 0], opacity: [0.35, 1, 0.35] }}
+          transition={{ duration: 0.9, repeat: Infinity, ease: 'easeInOut', delay: i * 0.15 }}
+        />
+      ))}
+    </div>
+  </div>
+);
+
 const ToolMessage = ({ msg }: { msg: any }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
@@ -446,13 +478,15 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const [selectedModel, setSelectedModel] = useState('');
   const [availableModels, setAvailableModels] = useState<any[]>([]);
   const [showInstallAlert, setShowInstallAlert] = useState(false);
-  const [chatMode, setChatMode] = useState('Ask');
+  const [chatMode, setChatMode] = useState('Auto');
   const [inputLimitIdx, setInputLimitIdx] = useState(4);
   const [outputLimitIdx, setOutputLimitIdx] = useState(2);
   const [performanceMode, setPerformanceMode] = useState<'low' | 'high'>('high');
   const userSetPerfModeRef = useRef(false);
   const userSetModelRef = useRef(false);
   const [contextTokens, setContextTokens] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const ctxPercent = Math.min(100, Math.round((contextTokens / PERFORMANCE_PROFILE_INFO[performanceMode].ctxSize) * 100));
   const tokenPresets = [512, 1024, 2048, 4096, 8192, 16384, 32768, 128000];
 
@@ -660,6 +694,9 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const processChat = async (currentMessages: any[]) => {
     setIsLoading(true);
+    setIsGenerating(true);
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     const requestStartedAt = performance.now();
     try {
       const toolPolicies = policies.reduce((acc, p) => {
@@ -671,12 +708,15 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name })),
           systemPrompt: systemPrompt,
           model: selectedModel,
           toolPolicies,
-          performanceMode
+          performanceMode,
+          chatMode,
+          outputLimitTokens: tokenPresets[outputLimitIdx]
         })
       });
 
@@ -731,7 +771,9 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             } else if (data.type === 'requires_approval') {
               setPendingToolCall(data.toolCall);
               // Backend paused execution. We break out of the stream reader.
-              return; 
+              setIsGenerating(false);
+              abortControllerRef.current = null;
+              return;
             } else if (data.type === 'error') {
               console.error('Agent error:', data.error);
             } else if (data.type === 'done') {
@@ -749,15 +791,23 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       // Actually, the backend loop handles continuing. So when the stream ends normally, it means 'done'.
       aiMessage.totalMs = performance.now() - requestStartedAt;
       setMessages([...nextMessages]);
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'system', content: 'Network error communicating with backend.', type: 'normal' }]);
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        setMessages(prev => [...prev, { role: 'system', content: 'Response stopped.', type: 'normal' }]);
+      } else {
+        console.error(error);
+        setMessages(prev => [...prev, { role: 'system', content: 'Network error communicating with backend.', type: 'normal' }]);
+      }
       setIsLoading(false);
+    } finally {
+      setIsGenerating(false);
+      abortControllerRef.current = null;
     }
   };
 
   const executeToolAndContinue = async (toolCall: any, currentMessages: any[]) => {
     setIsLoading(true);
+    setIsGenerating(true);
     try {
       const res = await fetch('http://localhost:3001/api/execute_tool', {
         method: 'POST',
@@ -807,6 +857,10 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     processChat(nextMessages);
   };
 
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+  };
+
   useGSAP(() => {
     gsap.from('.msg-anim', {
       opacity: 0,
@@ -828,7 +882,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
-        <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
         <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', textAlign: 'center', padding: '2rem' }}>
           <Shield size={28} color="var(--text-muted)" />
           <div style={{ fontWeight: 600, fontSize: '1.125rem', color: 'var(--text-color)' }}>Sign in to chat</div>
@@ -887,7 +941,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </motion.div>
         )}
       </AnimatePresence>
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div className="dashboard-content">
         {/* Left Panel */}
@@ -955,6 +1009,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       <div style={{ fontSize: '1rem', fontWeight: 600 }}>{tokenPresets[inputLimitIdx]}</div>
                     </div>
                     <input type="range" className="range-slider" min={0} max={tokenPresets.length - 1} value={inputLimitIdx} onChange={(e) => setInputLimitIdx(Number(e.target.value))} />
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.375rem' }}>Not yet enforced — reserved for a future context-trimming feature.</div>
                   </div>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -962,6 +1017,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       <div style={{ fontSize: '1rem', fontWeight: 600 }}>{tokenPresets[outputLimitIdx]}</div>
                     </div>
                     <input type="range" className="range-slider" min={0} max={tokenPresets.length - 1} value={outputLimitIdx} onChange={(e) => setOutputLimitIdx(Number(e.target.value))} />
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.375rem' }}>Sent to the model as a soft target it's asked to wrap up within, with a generous hard backstop so it can't run away.</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
@@ -1177,13 +1233,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               )}
               {isLoading && (
                 <div className="msg msg-ai msg-anim">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Sparkles size={12} color="#fff" />
-                    </div>
-                    <strong>{selectedModel}</strong>
-                  </div>
-                  <div className="msg-content">Thinking...</div>
+                  <ThinkingIndicator />
                 </div>
               )}
             </div>
@@ -1197,14 +1247,24 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             >
               <div className="chat-input-toolbar">
                 <div className="mode-switcher">
-                  {['Ask', 'Search', 'Research'].map(mode => (
-                    <button key={mode} className={`mode-btn ${chatMode === mode ? 'active' : ''}`} onClick={() => setChatMode(mode)}>
-                      {mode === 'Ask' && <MessageSquare size={14} style={{ display: 'inline', marginRight: '6px' }} />}
-                      {mode === 'Search' && <Search size={14} style={{ display: 'inline', marginRight: '6px' }} />}
-                      {mode === 'Research' && <Sparkles size={14} style={{ display: 'inline', marginRight: '6px' }} />}
-                      {mode}
-                    </button>
-                  ))}
+                  {[
+                    { mode: 'Auto', icon: RefreshCw, color: 'var(--danger-color)' },
+                    { mode: 'Policy', icon: Shield, color: 'var(--warning-color)' },
+                    { mode: 'Manual', icon: MessageSquare, color: 'var(--accent-color)' },
+                  ].map(({ mode, icon: Icon, color }) => {
+                    const isActive = chatMode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        className={`mode-btn ${isActive ? 'active' : ''}`}
+                        onClick={() => setChatMode(mode)}
+                        style={isActive ? { color, boxShadow: `0 0 0 1px ${color}` } : undefined}
+                      >
+                        <Icon size={14} style={{ display: 'inline', marginRight: '6px' }} />
+                        {mode}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="chat-input-row">
@@ -1215,9 +1275,15 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                 />
-                <button className="send-btn" onClick={handleSendMessage} disabled={isLoading}>
-                  <Send size={18} />
-                </button>
+                {isGenerating ? (
+                  <button className="send-btn" onClick={handleStop} style={{ background: 'var(--danger-color)' }} title="Stop generating">
+                    <Square size={16} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button className="send-btn" onClick={handleSendMessage}>
+                    <Send size={18} />
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>
@@ -1365,7 +1431,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
         <div className="dash-title" style={{ paddingBottom: '2rem' }}>
@@ -1508,7 +1574,7 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>
@@ -1655,7 +1721,7 @@ const MemoryScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>

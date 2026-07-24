@@ -29,6 +29,13 @@ const DEFAULT_TOOLS = [
   { id: 'web', name: 'Web Search', icon: <Globe size={14} /> },
 ];
 
+// Cloud models routed through backend/src/llm/Anthropic.ts (selected when the
+// model name starts with 'claude-'). Requires ANTHROPIC_API_KEY server-side.
+const CLAUDE_MODELS = [
+  { name: 'claude-sonnet-5' },
+  { name: 'claude-haiku-4-5' },
+];
+
 export default function Home() {
   const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'transition'>('landing');
   const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory'>('app');
@@ -645,22 +652,22 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   useEffect(() => {
     const fetchModels = async () => {
+      let ollamaModels: any[] = [];
       try {
         const response = await fetch('http://localhost:3001/api/models');
-        if (!response.ok) {
-          setShowInstallAlert(true);
-          return;
-        }
-        const data = await response.json();
-        if (data.models && data.models.length > 0) {
-          setAvailableModels(data.models);
-          if (!userSetModelRef.current) {
-            setSelectedModel(data.models[0].name);
-          }
-        } else {
-          setShowInstallAlert(true);
+        if (response.ok) {
+          const data = await response.json();
+          ollamaModels = data.models || [];
         }
       } catch (error) {
+        // Ollama unreachable — Claude models below can still be used if ANTHROPIC_API_KEY is configured.
+      }
+      const models = [...ollamaModels, ...CLAUDE_MODELS];
+      setAvailableModels(models);
+      if (!userSetModelRef.current && models.length > 0) {
+        setSelectedModel(models[0].name);
+      }
+      if (ollamaModels.length === 0) {
         setShowInstallAlert(true);
       }
     };
@@ -710,7 +717,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         headers: { 'Content-Type': 'application/json' },
         signal: abortController.signal,
         body: JSON.stringify({
-          messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name })),
+          messages: currentMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, name: m.name, tool_call_id: m.tool_call_id })),
           systemPrompt: systemPrompt,
           model: selectedModel,
           toolPolicies,
@@ -765,7 +772,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               aiMessage.tool_calls = data.toolCalls;
               setMessages([...nextMessages]);
             } else if (data.type === 'tool_result') {
-              const toolMsg = { role: 'tool', name: data.name, content: data.result, type: 'tool_result' };
+              const toolMsg = { role: 'tool', name: data.name, content: data.result, type: 'tool_result', tool_call_id: data.toolCallId };
               nextMessages = [...nextMessages, toolMsg];
               setMessages(nextMessages);
             } else if (data.type === 'requires_approval') {
@@ -816,7 +823,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         body: JSON.stringify({ tool_name: toolCall.function.name, arguments: toolCall.function.arguments })
       });
       const toolData = await res.json();
-      const toolMsg = { role: 'tool', content: toolData.result, type: 'tool_result', name: toolCall.function.name };
+      const toolMsg = { role: 'tool', content: toolData.result, type: 'tool_result', name: toolCall.function.name, tool_call_id: toolCall.id };
       const nextMessages = [...currentMessages, toolMsg];
       setMessages(nextMessages);
       // Resume the agent loop by calling chat again
@@ -840,7 +847,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
 
   const handleDenyTool = () => {
     if (pendingToolCall) {
-      const toolMsg = { role: 'tool', content: `Action Denied by user for ${pendingToolCall.function.name}.`, type: 'blocked', reason: `User manually denied the use of ${pendingToolCall.function.name}` };
+      const toolMsg = { role: 'tool', content: `Action Denied by user for ${pendingToolCall.function.name}.`, type: 'blocked', reason: `User manually denied the use of ${pendingToolCall.function.name}`, name: pendingToolCall.function.name, tool_call_id: pendingToolCall.id };
       const nextMessages = [...messages, toolMsg];
       setPendingToolCall(null);
       setMessages(nextMessages);

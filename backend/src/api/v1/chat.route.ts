@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { Agent } from '../../agent/Agent';
-import { Ollama } from '../../llm/Ollama';
+import { createLLM } from '../../llm/factory';
 import { registry, executor } from '../../agent/sharedInstances';
 import { resolvePerformanceMode } from '../../llm/performanceModes';
 import { apiKeyAuth } from '../../middleware/apiKeyAuth';
@@ -27,7 +27,7 @@ router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
   }
 
   const mode = resolvePerformanceMode(performanceMode);
-  const llm = new Ollama(model, mode);
+  const llm = createLLM(model, mode);
   const agent = new Agent(llm, registry, executor);
   const combinedSystemPrompt = (systemPrompt || '') + TOOL_USE_DIRECTIVE;
 

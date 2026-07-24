@@ -96,8 +96,8 @@ export class Agent {
 
           if (policy === 'Blocked') {
             const blockMsg = `Action Blocked: Policy enforces blocking for ${toolCall.function.name}.`;
-            currentMessages.push({ role: 'tool', name: toolCall.function.name, content: blockMsg });
-            streamCallback({ type: 'tool_result', name: toolCall.function.name, result: blockMsg });
+            currentMessages.push({ role: 'tool', name: toolCall.function.name, content: blockMsg, tool_call_id: toolCall.id });
+            streamCallback({ type: 'tool_result', name: toolCall.function.name, result: blockMsg, toolCallId: toolCall.id });
           } else if (policy === 'Requires Approval') {
             // Pause loop and yield back to client
             streamCallback({ type: 'requires_approval', toolCall });
@@ -106,8 +106,8 @@ export class Agent {
           } else {
             // Execute immediately
             const result = await this.executor.execute(toolCall);
-            currentMessages.push({ role: 'tool', name: toolCall.function.name, content: result });
-            streamCallback({ type: 'tool_result', name: toolCall.function.name, result });
+            currentMessages.push({ role: 'tool', name: toolCall.function.name, content: result, tool_call_id: toolCall.id });
+            streamCallback({ type: 'tool_result', name: toolCall.function.name, result, toolCallId: toolCall.id });
           }
         }
 

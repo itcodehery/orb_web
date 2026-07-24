@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getAuth } from '@clerk/express';
 import { Agent } from '../agent/Agent';
-import { Ollama } from '../llm/Ollama';
+import { createLLM } from '../llm/factory';
 import { registry, executor } from '../agent/sharedInstances';
 import { resolvePerformanceMode } from '../llm/performanceModes';
 import { validChatMode, buildPolicyResolver } from '../agent/chatMode';
@@ -38,7 +38,7 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
     }
 
     const mode = resolvePerformanceMode(performanceMode);
-    const llm = new Ollama(model, mode, limit);
+    const llm = createLLM(model, mode, limit);
     const agent = new Agent(llm, registry, executor);
 
     res.setHeader('Content-Type', 'application/x-ndjson');

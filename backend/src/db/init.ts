@@ -53,5 +53,11 @@ export function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON sessions(user_id, status);
+
+    CREATE TABLE IF NOT EXISTS connectors (
+      provider TEXT PRIMARY KEY,
+      api_key TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 }

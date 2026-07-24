@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Readable } from 'stream';
 import { LLM } from './LLM';
 import { Message, ToolSchema, LLMResponse, ToolCall } from '../types';
+import { getConnectorKey } from '../db/connectors.repo';
 
 function toAnthropicTools(tools?: ToolSchema[]): Anthropic.Tool[] | undefined {
   if (!tools || tools.length === 0) return undefined;
@@ -57,7 +58,9 @@ function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
 
 /**
  * Second LLM provider alongside Ollama, selected when the model name is
- * prefixed with 'claude-' (see llm/factory.ts). Requires ANTHROPIC_API_KEY.
+ * prefixed with 'claude-' (see llm/factory.ts). API key resolved via
+ * db/connectors.repo.ts — a key saved through the Connectors UI, falling
+ * back to the ANTHROPIC_API_KEY env var.
  *
  * chatStream() intentionally does NOT do true token-by-token streaming: it
  * calls the non-streaming Messages API and synthesizes a single Ollama-shaped
@@ -73,7 +76,7 @@ export class AnthropicLLM implements LLM {
   private maxTokens: number;
 
   constructor(model: string = 'claude-sonnet-5', maxTokens: number = 4096) {
-    this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    this.client = new Anthropic({ apiKey: getConnectorKey('anthropic') });
     this.model = model;
     this.maxTokens = maxTokens;
   }

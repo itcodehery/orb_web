@@ -1494,6 +1494,52 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const [connectors, setConnectors] = useState<any[]>([]);
+  const [connectorInputs, setConnectorInputs] = useState<Record<string, string>>({});
+  const [savingConnector, setSavingConnector] = useState<string | null>(null);
+
+  const fetchConnectors = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/connectors', { credentials: 'include' });
+      if (!res.ok) { setConnectors([]); return; }
+      setConnectors(await res.json());
+    } catch (error) {
+      console.error(error);
+      setConnectors([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchConnectors();
+    else setConnectors([]);
+  }, [isSignedIn]);
+
+  const handleSaveConnector = async (provider: string) => {
+    const apiKey = connectorInputs[provider]?.trim();
+    if (!apiKey) return;
+    setSavingConnector(provider);
+    try {
+      await fetch('http://localhost:3001/api/connectors', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, apiKey }),
+      });
+      setConnectorInputs({ ...connectorInputs, [provider]: '' });
+      fetchConnectors();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSavingConnector(null);
+    }
+  };
+
+  const handleRemoveConnector = async (provider: string) => {
+    if (!window.confirm('Remove this connector\'s stored API key?')) return;
+    await fetch(`http://localhost:3001/api/connectors/${provider}`, { method: 'DELETE', credentials: 'include' });
+    fetchConnectors();
+  };
+
   const [keys, setKeys] = useState<any[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyTools, setNewKeyTools] = useState({ fs: false, bash: false, web: false });
@@ -1615,6 +1661,52 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
             <code style={{ fontSize: '1rem', color: 'var(--text-color)' }}>{baseUrl}</code>
           </div>
           <button className="icon-btn" onClick={handleCopyBaseUrl}>{copied ? 'Copied!' : <FileText size={16} />}</button>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+          <div className="dash-title-small" style={{ marginBottom: '0.25rem' }}>Model Connectors</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Connect additional model providers alongside your local Ollama models. Keys are stored locally and never leave this machine.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {connectors.map(c => (
+              <div key={c.provider} className="rule-row" style={{ alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div className="rule-row-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {c.name}
+                    <div className="status-indicator">
+                      <div className={`status-dot ${c.configured ? 'green' : 'yellow'}`}></div>
+                      {c.configured ? `Connected${c.source === 'environment' ? ' (via .env)' : ''}` : 'Not connected'}
+                    </div>
+                  </div>
+                  {c.configured ? (
+                    <div className="rule-row-desc">{c.maskedKey}</div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <input
+                        type="password"
+                        className="form-input"
+                        placeholder="Paste API key"
+                        value={connectorInputs[c.provider] || ''}
+                        onChange={(e) => setConnectorInputs({ ...connectorInputs, [c.provider]: e.target.value })}
+                      />
+                      <button
+                        className="btn-pill"
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', whiteSpace: 'nowrap' }}
+                        onClick={() => handleSaveConnector(c.provider)}
+                        disabled={!connectorInputs[c.provider]?.trim() || savingConnector === c.provider}
+                      >
+                        Connect
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {c.configured && c.source === 'database' && (
+                  <button className="icon-btn" onClick={() => handleRemoveConnector(c.provider)}><X size={16} /></button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {createdKey && (

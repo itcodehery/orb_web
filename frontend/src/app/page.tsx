@@ -1566,6 +1566,24 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     else setAuditLogs([]);
   }, [isSignedIn]);
 
+  const [analytics, setAnalytics] = useState<any>(null);
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/analytics/summary?hours=24', { credentials: 'include' });
+      if (!res.ok) { setAnalytics(null); return; }
+      setAnalytics(await res.json());
+    } catch (error) {
+      console.error(error);
+      setAnalytics(null);
+    }
+  };
+
+  useEffect(() => {
+    if (isSignedIn) fetchAnalytics();
+    else setAnalytics(null);
+  }, [isSignedIn]);
+
   return (
     <motion.div
       className="dashboard-wrapper"
@@ -1656,6 +1674,74 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div className="dash-title-small">Analytics (last 24h)</div>
+                <button className="icon-btn" onClick={fetchAnalytics}><RefreshCw size={14} /></button>
+              </div>
+
+              {analytics && analytics.anomalies.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                  {analytics.anomalies.map((a: any, i: number) => (
+                    <div key={i} className="action-card" style={{ borderColor: a.severity === 'critical' ? 'var(--danger-color)' : 'var(--warning-color)' }}>
+                      <h4 style={{ color: a.severity === 'critical' ? 'var(--danger-color)' : 'var(--warning-color)' }}>
+                        <TriangleAlert size={16} /> {a.severity === 'critical' ? 'Critical' : 'Warning'}
+                      </h4>
+                      <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{a.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header"><span>Total Requests</span></div>
+                  <div className="stat-value-large">{analytics?.totalRequests ?? '—'}</div>
+                </div>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header"><span>Blocked</span></div>
+                  <div className="stat-value-large" style={{ color: (analytics?.blockedCount ?? 0) > 0 ? 'var(--warning-color)' : 'var(--text-color)' }}>{analytics?.blockedCount ?? '—'}</div>
+                </div>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header"><span>Errors</span></div>
+                  <div className="stat-value-large" style={{ color: (analytics?.errorCount ?? 0) > 0 ? 'var(--danger-color)' : 'var(--text-color)' }}>{analytics?.errorCount ?? '—'}</div>
+                </div>
+                <div className="stat-item glass-panel">
+                  <div className="stat-item-header"><span>Avg Latency</span></div>
+                  <div className="stat-value-large">{analytics ? `${(analytics.avgLatencyMs / 1000).toFixed(2)}s` : '—'}</div>
+                </div>
+              </div>
+
+              {analytics && analytics.hourlyVolume.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Request volume by hour</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '60px' }}>
+                    {analytics.hourlyVolume.map((h: any, i: number) => {
+                      const max = Math.max(...analytics.hourlyVolume.map((x: any) => x.count));
+                      return (
+                        <div
+                          key={i}
+                          title={`${h.hour}: ${h.count} requests`}
+                          style={{ flex: 1, minWidth: 4, height: `${Math.max(6, (h.count / max) * 100)}%`, background: 'var(--accent-gradient)', borderRadius: '3px 3px 0 0' }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {analytics && analytics.topTools.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Most-used tools</div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {analytics.topTools.map((t: any) => (
+                      <div key={t.name} className="telemetry-chip"><Zap size={14} color="var(--accent-color)" /> <span>{t.name} · {t.count}</span></div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="glass-panel" style={{ padding: '1.5rem' }}>

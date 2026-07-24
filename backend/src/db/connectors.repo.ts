@@ -1,9 +1,22 @@
 import { db } from './db';
 
-export type Provider = 'anthropic';
+export type Provider = 'anthropic' | 'openai' | 'groq' | 'mistral' | 'google';
 
-export const KNOWN_PROVIDERS: { id: Provider; name: string; envFallback: string }[] = [
-  { id: 'anthropic', name: 'Claude (Anthropic)', envFallback: 'ANTHROPIC_API_KEY' },
+export interface ProviderConfig {
+  id: Provider;
+  name: string;
+  envFallback: string;
+  baseUrl?: string; // set for OpenAI-compatible providers, routed through OpenAICompatibleLLM
+  modelPrefix: string; // how models are identified/routed in llm/factory.ts, and shown as a hint in the UI
+  chatSupported: boolean; // false = key storage works, but no LLM wiring exists yet
+}
+
+export const KNOWN_PROVIDERS: ProviderConfig[] = [
+  { id: 'anthropic', name: 'Claude (Anthropic)', envFallback: 'ANTHROPIC_API_KEY', modelPrefix: 'claude-', chatSupported: true },
+  { id: 'openai', name: 'OpenAI (GPT)', envFallback: 'OPENAI_API_KEY', baseUrl: 'https://api.openai.com/v1', modelPrefix: 'gpt-', chatSupported: true },
+  { id: 'groq', name: 'Groq', envFallback: 'GROQ_API_KEY', baseUrl: 'https://api.groq.com/openai/v1', modelPrefix: 'groq/', chatSupported: true },
+  { id: 'mistral', name: 'Mistral AI', envFallback: 'MISTRAL_API_KEY', baseUrl: 'https://api.mistral.ai/v1', modelPrefix: 'mistral/', chatSupported: true },
+  { id: 'google', name: 'Google (Gemini)', envFallback: 'GOOGLE_API_KEY', modelPrefix: 'gemini-', chatSupported: false },
 ];
 
 export interface ConnectorStatus {
@@ -13,6 +26,8 @@ export interface ConnectorStatus {
   source: 'database' | 'environment' | 'none';
   maskedKey: string | null;
   updated_at: string | null;
+  modelPrefix: string;
+  chatSupported: boolean;
 }
 
 function maskKey(key: string): string {
@@ -44,13 +59,14 @@ export function listConnectorStatuses(): ConnectorStatus[] {
   const byProvider = new Map(rows.map(r => [r.provider, r]));
 
   return KNOWN_PROVIDERS.map(p => {
+    const common = { provider: p.id, name: p.name, modelPrefix: p.modelPrefix, chatSupported: p.chatSupported };
     const stored = byProvider.get(p.id);
     if (stored) {
-      return { provider: p.id, name: p.name, configured: true, source: 'database' as const, maskedKey: maskKey(stored.api_key), updated_at: stored.updated_at };
+      return { ...common, configured: true, source: 'database' as const, maskedKey: maskKey(stored.api_key), updated_at: stored.updated_at };
     }
     if (process.env[p.envFallback]) {
-      return { provider: p.id, name: p.name, configured: true, source: 'environment' as const, maskedKey: maskKey(process.env[p.envFallback] as string), updated_at: null };
+      return { ...common, configured: true, source: 'environment' as const, maskedKey: maskKey(process.env[p.envFallback] as string), updated_at: null };
     }
-    return { provider: p.id, name: p.name, configured: false, source: 'none' as const, maskedKey: null, updated_at: null };
+    return { ...common, configured: false, source: 'none' as const, maskedKey: null, updated_at: null };
   });
 }

@@ -1,15 +1,17 @@
 import { LLM } from './LLM';
 import { Message, ToolSchema, LLMResponse, ToolCall } from '../types';
-import { PerformanceMode, PERFORMANCE_PROFILES, DEFAULT_PERFORMANCE_MODE } from './performanceModes';
+import { PerformanceMode, PERFORMANCE_PROFILES, DEFAULT_PERFORMANCE_MODE, computeNumPredictBackstop } from './performanceModes';
 
 export class Ollama implements LLM {
   private baseUrl = 'http://localhost:11434';
   private model: string;
   private performanceMode: PerformanceMode;
+  private outputLimitTokens?: number;
 
-  constructor(model: string = 'llama3.1', performanceMode: PerformanceMode = DEFAULT_PERFORMANCE_MODE) {
+  constructor(model: string = 'llama3.1', performanceMode: PerformanceMode = DEFAULT_PERFORMANCE_MODE, outputLimitTokens?: number) {
     this.model = model;
     this.performanceMode = performanceMode;
+    this.outputLimitTokens = outputLimitTokens;
   }
 
   async chat(messages: Message[], tools?: ToolSchema[], systemPrompt?: string): Promise<LLMResponse> {
@@ -47,7 +49,7 @@ export class Ollama implements LLM {
     };
   }
 
-  async chatStream(messages: Message[], tools?: ToolSchema[], systemPrompt?: string): Promise<NodeJS.ReadableStream> {
+  async chatStream(messages: Message[], tools?: ToolSchema[], systemPrompt?: string, signal?: AbortSignal): Promise<NodeJS.ReadableStream> {
     const systemMessage = systemPrompt ? [{ role: 'system', content: systemPrompt }] : [];
     const profile = PERFORMANCE_PROFILES[this.performanceMode];
 
@@ -55,7 +57,10 @@ export class Ollama implements LLM {
       model: this.model,
       messages: [...systemMessage, ...messages],
       stream: true,
-      options: profile.options,
+      options: {
+        ...profile.options,
+        num_predict: computeNumPredictBackstop(this.performanceMode, this.outputLimitTokens),
+      },
       keep_alive: profile.keepAlive,
     };
 
@@ -67,6 +72,7 @@ export class Ollama implements LLM {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
+      signal,
     });
 
     if (!response.ok || !response.body) {

@@ -1,18 +1,19 @@
 import { Router, Request, Response } from 'express';
 import { Agent } from '../../agent/Agent';
-import { Ollama } from '../../llm/Ollama';
+import { createLLM } from '../../llm/factory';
 import { registry, executor } from '../../agent/sharedInstances';
 import { resolvePerformanceMode } from '../../llm/performanceModes';
 import { apiKeyAuth } from '../../middleware/apiKeyAuth';
 import { insertLog } from '../../db/auditLog.repo';
+import { TOOL_USE_DIRECTIVE } from '../../agent/systemPrompt';
 import { Message, ToolCall } from '../../types';
 
 const router = Router();
 
-const TOOL_NAME_BY_FLAG: Record<'fs' | 'bash' | 'web', string> = {
-  fs: 'read_file',
-  bash: 'execute_bash',
-  web: 'web_search',
+const TOOL_NAMES_BY_FLAG: Record<'fs' | 'bash' | 'web', string[]> = {
+  fs: ['read_file', 'write_file', 'list_directory'],
+  bash: ['execute_bash'],
+  web: ['web_search'],
 };
 
 router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
@@ -26,13 +27,14 @@ router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
   }
 
   const mode = resolvePerformanceMode(performanceMode);
-  const llm = new Ollama(model, mode);
+  const llm = createLLM(model, mode);
   const agent = new Agent(llm, registry, executor);
+  const combinedSystemPrompt = (systemPrompt || '') + TOOL_USE_DIRECTIVE;
 
   const enabledToolNames = new Set(
-    (Object.keys(TOOL_NAME_BY_FLAG) as Array<'fs' | 'bash' | 'web'>)
+    (Object.keys(TOOL_NAMES_BY_FLAG) as Array<'fs' | 'bash' | 'web'>)
       .filter((flag) => apiKey.tools[flag])
-      .map((flag) => TOOL_NAME_BY_FLAG[flag])
+      .flatMap((flag) => TOOL_NAMES_BY_FLAG[flag])
   );
 
   const policyDecisions: Record<string, string> = {};
@@ -64,7 +66,7 @@ router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
   };
 
   try {
-    await agent.run(messages as Message[], systemPrompt, streamCallback, getPolicyStatus, mode);
+    await agent.run(messages as Message[], combinedSystemPrompt, streamCallback, getPolicyStatus, mode);
   } catch (error: any) {
     statusCode = 500;
     streamCallback({ type: 'error', error: error.message });

@@ -9,7 +9,7 @@ export class Agent {
     private llm: LLM,
     private registry: ToolRegistry,
     private executor: ToolExecutor
-  ) {}
+  ) { }
 
   /**
    * The core Reason-Act-Observe loop with streaming support and policy handling.
@@ -88,7 +88,7 @@ export class Agent {
       if (toolCalls && toolCalls.length > 0) {
         // Record assistant's tool call intent
         currentMessages.push({ role: 'assistant', content: '', tool_calls: toolCalls });
-        
+
         streamCallback({ type: 'tool_call_intent', toolCalls });
 
         for (const toolCall of toolCalls) {

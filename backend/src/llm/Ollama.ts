@@ -7,11 +7,13 @@ export class Ollama implements LLM {
   private model: string;
   private performanceMode: PerformanceMode;
   private outputLimitTokens?: number;
+  private think?: boolean;
 
-  constructor(model: string = 'llama3.1', performanceMode: PerformanceMode = DEFAULT_PERFORMANCE_MODE, outputLimitTokens?: number) {
+  constructor(model: string = 'llama3.1', performanceMode: PerformanceMode = DEFAULT_PERFORMANCE_MODE, outputLimitTokens?: number, think?: boolean) {
     this.model = model;
     this.performanceMode = performanceMode;
     this.outputLimitTokens = outputLimitTokens;
+    this.think = think;
   }
 
   async chat(messages: Message[], tools?: ToolSchema[], systemPrompt?: string): Promise<LLMResponse> {
@@ -28,6 +30,10 @@ export class Ollama implements LLM {
 
     if (tools && tools.length > 0) {
       requestBody.tools = tools;
+    }
+
+    if (this.think !== undefined) {
+      requestBody.think = this.think;
     }
 
     const response = await fetch(`${this.baseUrl}/api/chat`, {

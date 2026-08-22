@@ -32,7 +32,10 @@ Respond with a single JSON object and nothing else, in this exact shape:
 If there are no new facts, use an empty array. hallucinationRisk must always be a number.`;
 
   try {
-    const llm = new Ollama(model, 'low');
+    // Uncapped (num_predict:-1) + thinking disabled: background analysis must
+    // always reach the JSON content, which qwen-style thinking models otherwise
+    // starve under the low profile's 512-token cap.
+    const llm = new Ollama(model, 'high', undefined, false);
     const response = await llm.chat([{ role: 'user', content: prompt }]);
     const text = (response.text || '').trim();
 

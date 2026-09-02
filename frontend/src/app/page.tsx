@@ -6,7 +6,8 @@ import { useGSAP } from '@gsap/react';
 import {
   ChevronLeft, ChevronRight, TriangleAlert, ShieldAlert, Shield, Zap,
   Cpu, Terminal, Send, Plus, X, Globe, FileText, Sun, Moon,
-  MessageSquare, Sparkles, Code, Clock, Brain, RefreshCw, Square, Plug
+  MessageSquare, Sparkles, Code, Clock, Brain, RefreshCw, Square, Plug,
+  ScrollText, Trash2
 } from 'lucide-react';
 import { SignInButton, SignUpButton, Show, UserButton, useUser } from '@clerk/nextjs';
 import ReactMarkdown from 'react-markdown';
@@ -42,11 +43,11 @@ const CLOUD_MODELS = [
 ];
 
 export default function Home() {
-  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors' | 'transition'>('landing');
-  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors'>('app');
+  const [screen, setScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors' | 'policies' | 'transition'>('landing');
+  const [nextScreen, setNextScreen] = useState<'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors' | 'policies'>('app');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors') => {
+  const handleNavigate = (target: 'landing' | 'app' | 'sessions' | 'api' | 'memory' | 'connectors' | 'policies') => {
     if (screen === target || screen === 'transition') return;
     setNextScreen(target);
     setScreen('transition');
@@ -72,12 +73,13 @@ export default function Home() {
       {screen === 'api' && <ApiScreen key="api" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'memory' && <MemoryScreen key="memory" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'connectors' && <ConnectorsScreen key="connectors" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {screen === 'policies' && <PoliciesScreen key="policies" handleNavigate={handleNavigate} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
       {screen === 'transition' && <TransitionScreen key="transition" />}
     </AnimatePresence>
   );
 }
 
-const Appbar = ({ onLogoClick, onChatClick, onApiClick, onMemoryClick, onConnectorsClick, isDarkMode, setIsDarkMode }: any) => (
+const Appbar = ({ onLogoClick, onChatClick, onApiClick, onMemoryClick, onConnectorsClick, onPoliciesClick, isDarkMode, setIsDarkMode }: any) => (
   <nav className="app-nav">
     <motion.div
       className="logo"
@@ -101,6 +103,13 @@ const Appbar = ({ onLogoClick, onChatClick, onApiClick, onMemoryClick, onConnect
         style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
       >
         <Plug size={20} />
+      </button>
+      <button
+        onClick={onPoliciesClick}
+        title="Policies"
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-color)', display: 'flex' }}
+      >
+        <ScrollText size={20} />
       </button>
       <button
         onClick={onApiClick}
@@ -148,7 +157,7 @@ const LandingScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     >
       {/* Navigation */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
-        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} onPoliciesClick={() => handleNavigate('policies')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
       </div>
 
       {/* HERO SECTION */}
@@ -490,6 +499,22 @@ const ToolMessage = ({ msg }: { msg: any }) => {
   );
 };
 
+// Rendered for tool-role messages with type 'blocked' (a backend policy
+// block, an /api/execute_tool block, or a user denial) instead of the
+// collapsed ToolMessage.
+const BlockedActionCard = ({ msg }: { msg: any }) => (
+  <div className="action-card" style={{ marginTop: 0 }}>
+    <h4><ShieldAlert size={18} /> Action Blocked by Orb Policy</h4>
+    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{msg.reason || msg.content}</p>
+    {msg.policy && (
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+        {msg.policy.ruleTitle && <div className="telemetry-chip"><Shield size={12} color="var(--danger-color)" /> <span>{msg.policy.ruleTitle}</span></div>}
+        <div className="telemetry-chip"><span>{msg.policy.source === 'document' ? 'Company policy' : msg.policy.source === 'api_key' ? 'API key scope' : msg.policy.source === 'mode' ? 'Chat mode' : 'Session policy'}</span></div>
+      </div>
+    )}
+  </div>
+);
+
 const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   const { isSignedIn, isLoaded, user } = useUser();
   const chatContainer = useRef<HTMLDivElement>(null);
@@ -520,6 +545,22 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
   ]);
 
   const [pendingToolCall, setPendingToolCall] = useState<any>(null);
+  const [pendingPolicy, setPendingPolicy] = useState<any>(null);
+  const [companyPolicy, setCompanyPolicy] = useState<any>(null);
+  const [policyStats, setPolicyStats] = useState<any>(null);
+
+  const fetchPolicyContext = async () => {
+    try {
+      const [activeRes, statsRes] = await Promise.all([
+        fetch('http://localhost:3001/api/policies/active', { credentials: 'include' }),
+        fetch('http://localhost:3001/api/policies/stats?hours=24', { credentials: 'include' }),
+      ]);
+      setCompanyPolicy(activeRes.ok ? await activeRes.json() : null);
+      setPolicyStats(statsRes.ok ? await statsRes.json() : null);
+    } catch (error) {
+      console.error('Failed to load policy context:', error);
+    }
+  };
 
   const [isAddingRule, setIsAddingRule] = useState(false);
   const [ruleCondition, setRuleCondition] = useState('Contains Command');
@@ -588,8 +629,13 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       if (!Array.isArray(session?.messages)) return;
       setMessages((prev: any[]) => prev.map((m, i) => {
         const serverMsg = session.messages[i];
-        return serverMsg && typeof serverMsg.riskScore === 'number' ? { ...m, riskScore: serverMsg.riskScore } : m;
+        if (!serverMsg) return m;
+        const merged = { ...m };
+        if (typeof serverMsg.riskScore === 'number') merged.riskScore = serverMsg.riskScore;
+        if (Array.isArray(serverMsg.policyFlags)) merged.policyFlags = serverMsg.policyFlags;
+        return merged;
       }));
+      fetchPolicyContext();
     } catch (error) {
       console.error('Failed to refresh session:', error);
     }
@@ -635,6 +681,12 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       }
     };
     hydrate();
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    fetchPolicyContext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn]);
 
   useEffect(() => {
@@ -785,11 +837,14 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               aiMessage.tool_calls = data.toolCalls;
               setMessages([...nextMessages]);
             } else if (data.type === 'tool_result') {
-              const toolMsg = { role: 'tool', name: data.name, content: data.result, type: 'tool_result', tool_call_id: data.toolCallId };
+              const toolMsg = data.blocked
+                ? { role: 'tool', name: data.name, content: data.result, type: 'blocked', reason: data.result, policy: data.policy || null, tool_call_id: data.toolCallId }
+                : { role: 'tool', name: data.name, content: data.result, type: 'tool_result', tool_call_id: data.toolCallId };
               nextMessages = [...nextMessages, toolMsg];
               setMessages(nextMessages);
             } else if (data.type === 'requires_approval') {
               setPendingToolCall(data.toolCall);
+              setPendingPolicy(data.policy || null);
               // Backend paused execution. We break out of the stream reader.
               setIsGenerating(false);
               abortControllerRef.current = null;
@@ -822,6 +877,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     } finally {
       setIsGenerating(false);
       abortControllerRef.current = null;
+      fetchPolicyContext();
     }
   };
 
@@ -836,7 +892,9 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         body: JSON.stringify({ tool_name: toolCall.function.name, arguments: toolCall.function.arguments })
       });
       const toolData = await res.json();
-      const toolMsg = { role: 'tool', content: toolData.result, type: 'tool_result', name: toolCall.function.name, tool_call_id: toolCall.id };
+      const toolMsg = toolData.blocked
+        ? { role: 'tool', content: toolData.result, type: 'blocked', reason: toolData.result, policy: toolData.policy || null, name: toolCall.function.name, tool_call_id: toolCall.id }
+        : { role: 'tool', content: toolData.result, type: 'tool_result', name: toolCall.function.name, tool_call_id: toolCall.id };
       const nextMessages = [...currentMessages, toolMsg];
       setMessages(nextMessages);
       // Resume the agent loop by calling chat again
@@ -854,6 +912,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     if (pendingToolCall) {
       const call = pendingToolCall;
       setPendingToolCall(null);
+      setPendingPolicy(null);
       executeToolAndContinue(call, messages);
     }
   };
@@ -862,7 +921,15 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
     if (pendingToolCall) {
       const toolMsg = { role: 'tool', content: `Action Denied by user for ${pendingToolCall.function.name}.`, type: 'blocked', reason: `User manually denied the use of ${pendingToolCall.function.name}`, name: pendingToolCall.function.name, tool_call_id: pendingToolCall.id };
       const nextMessages = [...messages, toolMsg];
+      // Audit the denial (fire-and-forget) so approval outcomes show up in policy events.
+      fetch('http://localhost:3001/api/policies/events/denied', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool: pendingToolCall.function.name, arguments: pendingToolCall.function.arguments }),
+      }).catch(err => console.error('Failed to record denial:', err));
       setPendingToolCall(null);
+      setPendingPolicy(null);
       setMessages(nextMessages);
       processChat(nextMessages);
     }
@@ -902,7 +969,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
         exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
-        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+        <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} onPoliciesClick={() => handleNavigate('policies')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
         <div style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', textAlign: 'center', padding: '2rem' }}>
           <Shield size={28} color="var(--text-muted)" />
           <div style={{ fontWeight: 600, fontSize: '1.125rem', color: 'var(--text-color)' }}>Sign in to chat</div>
@@ -961,7 +1028,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
           </motion.div>
         )}
       </AnimatePresence>
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} onPoliciesClick={() => handleNavigate('policies')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div className="dashboard-content">
         {/* Left Panel */}
@@ -1150,7 +1217,7 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                     {ctxPercent}%
                   </span>
                 </div>
-                <div className="telemetry-chip"><Shield size={14} color="var(--success-color)" /> <span>1,204 Actions Blocked</span></div>
+                <div className="telemetry-chip" title="Blocked by policy in the last 24 hours (all channels)"><Shield size={14} color={(policyStats?.blocked ?? 0) > 0 ? 'var(--danger-color)' : 'var(--success-color)'} /> <span>{policyStats ? policyStats.blocked.toLocaleString() : '—'} Actions Blocked</span></div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -1184,7 +1251,9 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       <strong>{selectedModel}</strong>
                     </div>
                   )}
-                  {msg.role === 'tool' ? (
+                  {msg.type === 'blocked' ? (
+                    <BlockedActionCard msg={msg} />
+                  ) : msg.role === 'tool' ? (
                     <ToolMessage msg={msg} />
                   ) : (
                     <div className="msg-content">
@@ -1229,10 +1298,11 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                       Attempted Tool Call: <code>{msg.tool_calls[0].function.name}</code>
                     </div>
                   )}
-                  {msg.type === 'blocked' && (
-                    <div className="action-card" style={{ marginTop: '1rem' }}>
-                      <h4><ShieldAlert size={18} /> Action Blocked by Orb Policy</h4>
-                      <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{msg.reason}</p>
+                  {msg.role === 'assistant' && Array.isArray(msg.policyFlags) && msg.policyFlags.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                      {msg.policyFlags.map((flag: any) => (
+                        <div key={flag.ruleId} className="telemetry-chip" title="Flagged by the post-chat conduct judge (advisory)"><ShieldAlert size={12} color="var(--warning-color)" /> <span>Policy flag: {flag.title}</span></div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1241,6 +1311,9 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                 <div className="msg msg-anim">
                   <div className="action-card" style={{ borderColor: 'var(--warning-color)' }}>
                     <h4 style={{ color: 'var(--warning-color)' }}><ShieldAlert size={18} /> Approval Required for {pendingToolCall.function.name}</h4>
+                    {pendingPolicy?.source === 'document' && (
+                      <p style={{ fontSize: '0.8rem', color: 'var(--warning-color)', marginBottom: '0.75rem' }}>Company policy requires approval: <strong>{pendingPolicy.ruleTitle}</strong></p>
+                    )}
                     <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem', background: 'var(--bg-color)', padding: '0.5rem', borderRadius: '8px' }}>
                       <code>{JSON.stringify(pendingToolCall.function.arguments)}</code>
                     </p>
@@ -1328,6 +1401,18 @@ const AppScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
               </div>
 
               <div className="policy-block">
+                <div className="dash-title-small">Company policy</div>
+                <div className="rule-row" style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="rule-row-title">{companyPolicy ? companyPolicy.document.title : 'No company policy active'}</div>
+                    <div className="rule-row-desc">
+                      {companyPolicy
+                        ? `${companyPolicy.rules.length} rules · ${companyPolicy.document.enforcement_mode === 'enforce' ? 'Enforcing' : 'Monitor mode'} · applies in every chat mode`
+                        : 'Upload a policy document to enforce company rules for every user.'}
+                    </div>
+                  </div>
+                  <button className="subtle-btn" style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }} onClick={() => handleNavigate('policies')}>Manage</button>
+                </div>
                 <div className="dash-title-small" style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Active Rules</span>
                   <span>Status</span>
@@ -1451,7 +1536,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} onPoliciesClick={() => handleNavigate('policies')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
         <div className="dash-title" style={{ paddingBottom: '2rem' }}>
@@ -1482,6 +1567,7 @@ const SessionsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
                   <div style={{ display: 'flex', gap: '1rem' }}>
                     <div className="telemetry-chip"><Clock size={14} color="var(--warning-color)" /> <span>{session.avgLatencyMs != null ? `${(session.avgLatencyMs / 1000).toFixed(1)}s avg` : '—'}</span></div>
                     <div className="telemetry-chip"><TriangleAlert size={14} color="var(--danger-color)" /> <span>{session.avgRiskScore != null ? `${session.avgRiskScore}% risk` : '—'}</span></div>
+                    <div className="telemetry-chip"><ShieldAlert size={14} color="var(--warning-color)" /> <span>{session.policyFlagCount ? `${session.policyFlagCount} policy ${session.policyFlagCount === 1 ? 'flag' : 'flags'}` : 'no flags'}</span></div>
                   </div>
                   <div className="status-indicator">
                     {session.status === 'active' ? <><div className="status-dot green"></div> Active</> : <><div className="status-dot green"></div> Completed</>}
@@ -1612,7 +1698,7 @@ const ApiScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} onPoliciesClick={() => handleNavigate('policies')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>
@@ -1828,7 +1914,7 @@ const MemoryScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} onPoliciesClick={() => handleNavigate('policies')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>
@@ -1933,7 +2019,7 @@ const ConnectorsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) =>
       exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
       transition={{ duration: 0.4 }}
     >
-      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} onPoliciesClick={() => handleNavigate('policies')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
       <div style={{ maxWidth: '800px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <div className="dash-title" style={{ paddingBottom: '1rem' }}>
@@ -1994,6 +2080,547 @@ const ConnectorsScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) =>
             ))}
           </div>
         </div>
+      </div>
+    </motion.div>
+  );
+};
+
+// Mirrors backend/src/policy/validateRule.ts FIELD_TOOLS — keep in sync.
+const POLICY_TOOLS = ['execute_bash', 'read_file', 'write_file', 'list_directory', 'web_search', '*'];
+const POLICY_FIELDS_BY_TOOL: Record<string, string[]> = {
+  execute_bash: ['command', '*'],
+  read_file: ['filepath', '*'],
+  write_file: ['filepath', 'content', '*'],
+  list_directory: ['dirpath', '*'],
+  web_search: ['query', '*'],
+  '*': ['*', 'command', 'filepath', 'dirpath', 'query', 'content'],
+};
+const POLICY_MATCH_KINDS = ['any', 'contains', 'prefix', 'glob', 'regex'];
+const POLICY_ARG_KEY: Record<string, string> = { execute_bash: 'command', read_file: 'filepath', write_file: 'filepath', list_directory: 'dirpath', web_search: 'query' };
+const EFFECT_COLOR: Record<string, string> = { deny: 'var(--danger-color)', require_approval: 'var(--warning-color)', allow: 'var(--success-color)', advise: 'var(--accent-color)' };
+const EFFECT_LABEL: Record<string, string> = { deny: 'Block', require_approval: 'Approval', allow: 'Allow', advise: 'Advise' };
+const EMPTY_RULE_FORM = { kind: 'action', title: '', effect: 'deny', tool: 'execute_bash', matchField: 'command', matchKind: 'contains', pattern: '', directive: '' };
+
+const describeRuleMatch = (rule: any) => {
+  if (rule.kind === 'conduct') return rule.directive;
+  const tool = rule.tool === '*' ? 'any tool' : rule.tool;
+  if (rule.match_kind === 'any') return `${tool} · every call`;
+  return `${tool} · ${rule.match_field} ${rule.match_kind} "${rule.pattern}"`;
+};
+
+const formatBytes = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+const PoliciesScreen = ({ handleNavigate, isDarkMode, setIsDarkMode }: any) => {
+  const { isSignedIn, isLoaded } = useUser();
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [canManage, setCanManage] = useState(true);
+  const [adminGateEnabled, setAdminGateEnabled] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [compileModel, setCompileModel] = useState('');
+  const [models, setModels] = useState<any[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [ruleForm, setRuleForm] = useState<any>(EMPTY_RULE_FORM);
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [isAddingRule, setIsAddingRule] = useState(false);
+  const [expandedExcerpt, setExpandedExcerpt] = useState<number | null>(null);
+
+  const [dryTool, setDryTool] = useState('execute_bash');
+  const [dryArg, setDryArg] = useState('');
+  const [dryResult, setDryResult] = useState<any>(null);
+  const [events, setEvents] = useState<any[]>([]);
+
+  const api = async (path: string, init: RequestInit = {}) => {
+    const res = await fetch(`http://localhost:3001/api${path}`, { credentials: 'include', ...init });
+    if (res.status === 204) return null;
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+    return data;
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      const data = await api('/policies');
+      setDocuments(data.documents);
+      setCanManage(data.canManage);
+      setAdminGateEnabled(data.adminGateEnabled);
+    } catch (err) {
+      console.error(err);
+      setDocuments([]);
+    }
+  };
+
+  const fetchSelected = async (id: number) => {
+    try {
+      setSelected(await api(`/policies/${id}`));
+    } catch (err) {
+      setSelected(null);
+      setSelectedId(null);
+    }
+  };
+
+  const fetchEvents = async () => {
+    try {
+      setEvents(await api('/policies/events?limit=20'));
+    } catch (err) {
+      setEvents([]);
+    }
+  };
+
+  const refreshAll = async () => {
+    await fetchDocuments();
+    if (selectedId) await fetchSelected(selectedId);
+    await fetchEvents();
+  };
+
+  useEffect(() => {
+    if (!isSignedIn) { setDocuments([]); setSelected(null); setEvents([]); return; }
+    fetchDocuments();
+    fetchEvents();
+    const fetchModels = async () => {
+      let ollamaModels: any[] = [];
+      try {
+        const res = await fetch('http://localhost:3001/api/models');
+        if (res.ok) ollamaModels = (await res.json()).models || [];
+      } catch (err) {
+        // Ollama unreachable — cloud models can still compile if a connector key is configured.
+      }
+      const all = [...ollamaModels, ...CLOUD_MODELS];
+      setModels(all);
+      if (all.length && !compileModel) setCompileModel(all[0].name);
+    };
+    fetchModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn]);
+
+  useEffect(() => {
+    if (selectedId) fetchSelected(selectedId);
+    else setSelected(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  // Poll while the background compile is running.
+  useEffect(() => {
+    if (!selected || selected.document.status !== 'compiling') return;
+    const interval = setInterval(async () => {
+      await fetchSelected(selected.document.id);
+      await fetchDocuments();
+    }, 2000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.document?.id, selected?.document?.status]);
+
+  const run = async (action: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await action();
+      await refreshAll();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleUpload = () => run(async () => {
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (uploadTitle.trim()) formData.append('title', uploadTitle.trim());
+      if (compileModel) formData.append('model', compileModel);
+      // No Content-Type header: the browser sets the multipart boundary itself.
+      const data = await api('/policies/upload', { method: 'POST', body: formData });
+      setFile(null);
+      setUploadTitle('');
+      setSelectedId(data.document.id);
+    } finally {
+      setIsUploading(false);
+    }
+  });
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) setFile(dropped);
+  };
+
+  const handleActivate = (id: number) => run(() => api(`/policies/${id}/activate`, { method: 'POST' }));
+  const handleArchive = (id: number) => run(() => api(`/policies/${id}/archive`, { method: 'POST' }));
+  const handleRecompile = (id: number) => run(() => api(`/policies/${id}/recompile`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: compileModel || undefined }) }));
+  const handleDelete = (id: number) => {
+    if (!window.confirm('Delete this policy document and all of its rules?')) return;
+    run(async () => {
+      await api(`/policies/${id}`, { method: 'DELETE' });
+      if (selectedId === id) setSelectedId(null);
+    });
+  };
+  const handleModeToggle = (doc: any) => run(() => api(`/policies/${doc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enforcement_mode: doc.enforcement_mode === 'enforce' ? 'monitor' : 'enforce' }) }));
+
+  const handleToggleRule = (rule: any) => run(() => api(`/policies/${rule.document_id}/rules/${rule.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !rule.enabled }) }));
+  const handleDeleteRule = (rule: any) => {
+    if (!window.confirm('Delete this rule?')) return;
+    run(() => api(`/policies/${rule.document_id}/rules/${rule.id}`, { method: 'DELETE' }));
+  };
+  const startEditRule = (rule: any) => {
+    setIsAddingRule(false);
+    setEditingRuleId(rule.id);
+    setRuleForm({
+      kind: rule.kind, title: rule.title, effect: rule.effect, tool: rule.tool || 'execute_bash',
+      matchField: rule.match_field || '*', matchKind: rule.match_kind || 'any', pattern: rule.pattern || '', directive: rule.directive || '',
+    });
+  };
+  const cancelRuleForm = () => { setEditingRuleId(null); setIsAddingRule(false); setRuleForm(EMPTY_RULE_FORM); };
+  const ruleFormBody = () => (ruleForm.kind === 'conduct'
+    ? { kind: 'conduct', title: ruleForm.title, directive: ruleForm.directive }
+    : { kind: 'action', title: ruleForm.title, effect: ruleForm.effect, tool: ruleForm.tool, matchField: ruleForm.matchField, matchKind: ruleForm.matchKind, pattern: ruleForm.matchKind === 'any' ? undefined : ruleForm.pattern });
+  const handleSaveRuleForm = () => run(async () => {
+    if (!selected) return;
+    const body = JSON.stringify(ruleFormBody());
+    if (editingRuleId) await api(`/policies/${selected.document.id}/rules/${editingRuleId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
+    else await api(`/policies/${selected.document.id}/rules`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    cancelRuleForm();
+  });
+  const updateRuleForm = (patch: Record<string, string>) => {
+    const next = { ...ruleForm, ...patch };
+    if (patch.tool && !POLICY_FIELDS_BY_TOOL[next.tool].includes(next.matchField)) next.matchField = POLICY_FIELDS_BY_TOOL[next.tool][0];
+    setRuleForm(next);
+  };
+
+  const handleDryRun = async () => {
+    setError(null);
+    try {
+      const argKey = POLICY_ARG_KEY[dryTool];
+      setDryResult(await api('/policies/evaluate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tool: dryTool, arguments: { [argKey]: dryArg } }) }));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const statusDot = (status: string) => status === 'active' ? 'green' : status === 'failed' ? 'red' : status === 'archived' ? '' : 'yellow';
+  const canActivate = (doc: any) => (doc.status === 'review' || doc.status === 'archived') && doc.enabledRuleCount > 0;
+
+  const renderRuleForm = () => (
+    <div className="policy-form" style={{ background: 'var(--bg-color)', padding: '1rem', borderRadius: '12px', marginTop: '0.75rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <h4 style={{ margin: 0 }}>{editingRuleId ? 'Edit rule' : 'Add rule'}</h4>
+        <button className="icon-btn" onClick={cancelRuleForm}><X size={16} /></button>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Kind</label>
+        <select className="form-select" value={ruleForm.kind} onChange={(e) => updateRuleForm({ kind: e.target.value })}>
+          <option value="action">Action (enforced at the tool gate)</option>
+          <option value="conduct">Conduct (prompt + judge)</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Title</label>
+        <input type="text" className="form-input" value={ruleForm.title} onChange={(e) => updateRuleForm({ title: e.target.value })} placeholder="e.g. No privilege escalation" />
+      </div>
+      {ruleForm.kind === 'conduct' ? (
+        <div className="form-group">
+          <label className="form-label">Directive</label>
+          <input type="text" className="form-input" value={ruleForm.directive} onChange={(e) => updateRuleForm({ directive: e.target.value })} placeholder="e.g. Never disclose employee salary data." />
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div className="form-group">
+              <label className="form-label">Tool</label>
+              <select className="form-select" value={ruleForm.tool} onChange={(e) => updateRuleForm({ tool: e.target.value })}>
+                {POLICY_TOOLS.map(t => <option key={t} value={t}>{t === '*' ? 'any tool' : t}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Effect</label>
+              <select className="form-select" value={ruleForm.effect} onChange={(e) => updateRuleForm({ effect: e.target.value })}>
+                <option value="deny">Block</option>
+                <option value="require_approval">Require approval</option>
+                <option value="allow">Allow</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Field</label>
+              <select className="form-select" value={ruleForm.matchField} onChange={(e) => updateRuleForm({ matchField: e.target.value })}>
+                {POLICY_FIELDS_BY_TOOL[ruleForm.tool].map(f => <option key={f} value={f}>{f === '*' ? 'all arguments' : f}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Match</label>
+              <select className="form-select" value={ruleForm.matchKind} onChange={(e) => updateRuleForm({ matchKind: e.target.value })}>
+                {POLICY_MATCH_KINDS.map(k => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </div>
+          </div>
+          {ruleForm.matchKind !== 'any' && (
+            <div className="form-group">
+              <label className="form-label">Pattern</label>
+              <input type="text" className="form-input" value={ruleForm.pattern} onChange={(e) => updateRuleForm({ pattern: e.target.value })} placeholder={ruleForm.matchKind === 'glob' ? 'e.g. /etc/** or ~/Documents/HR/**' : 'e.g. rm -rf'} />
+            </div>
+          )}
+        </>
+      )}
+      <button className="btn-pill" style={{ width: '100%', padding: '0.75rem', fontSize: '0.875rem' }} onClick={handleSaveRuleForm} disabled={!ruleForm.title.trim() || (ruleForm.kind === 'conduct' ? !ruleForm.directive.trim() : ruleForm.matchKind !== 'any' && !ruleForm.pattern.trim())}>
+        {editingRuleId ? 'Save changes' : 'Add rule'}
+      </button>
+    </div>
+  );
+
+  const renderRule = (rule: any) => (
+    <div key={rule.id} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="rule-row" style={{ alignItems: 'flex-start', opacity: rule.enabled ? 1 : 0.55 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="rule-row-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ padding: '0.1rem 0.6rem', borderRadius: '99px', fontSize: '0.7rem', fontWeight: 700, color: '#fff', background: EFFECT_COLOR[rule.effect] }}>{EFFECT_LABEL[rule.effect]}</span>
+            {rule.title}
+            {rule.origin === 'manual' && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>manual</span>}
+          </div>
+          <div className="rule-row-desc" style={{ fontFamily: rule.kind === 'action' ? 'monospace' : 'inherit' }}>{describeRuleMatch(rule)}</div>
+          {rule.source_excerpt && (
+            <button
+              onClick={() => setExpandedExcerpt(expandedExcerpt === rule.id ? null : rule.id)}
+              style={{ background: 'none', border: 'none', color: 'var(--accent-color)', fontSize: '0.75rem', cursor: 'pointer', padding: 0, marginTop: '0.35rem' }}
+            >
+              {expandedExcerpt === rule.id ? 'Hide source' : 'Show source'}
+            </button>
+          )}
+          {expandedExcerpt === rule.id && rule.source_excerpt && (
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.35rem', borderLeft: '2px solid var(--panel-border)', paddingLeft: '0.6rem' }}>
+              &ldquo;{rule.source_excerpt}&rdquo;
+            </div>
+          )}
+        </div>
+        {canManage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <label className="toggle-switch">
+              <input type="checkbox" checked={rule.enabled} onChange={() => handleToggleRule(rule)} />
+              <span className="toggle-slider"></span>
+            </label>
+            <button className="icon-btn" title="Edit" onClick={() => startEditRule(rule)}><FileText size={14} /></button>
+            <button className="icon-btn" title="Delete" onClick={() => handleDeleteRule(rule)}><X size={16} /></button>
+          </div>
+        )}
+      </div>
+      {editingRuleId === rule.id && renderRuleForm()}
+    </div>
+  );
+
+  return (
+    <motion.div
+      className="dashboard-wrapper"
+      initial={{ opacity: 0, scale: 0.98, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+      transition={{ duration: 0.4 }}
+    >
+      <Appbar onLogoClick={() => handleNavigate('landing')} onChatClick={() => handleNavigate('app')} onApiClick={() => handleNavigate('api')} onMemoryClick={() => handleNavigate('memory')} onConnectorsClick={() => handleNavigate('connectors')} onPoliciesClick={() => handleNavigate('policies')} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
+
+      <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="dash-title" style={{ paddingBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button className="icon-btn" onClick={() => handleNavigate('app')}><ChevronLeft size={20} /></button>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-color)' }}>Policies</h1>
+          </div>
+        </div>
+
+        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6, marginTop: '-1rem' }}>
+          Upload your company&apos;s AI usage policy. Orb compiles it into reviewable rules — nothing is enforced until you activate it.
+        </div>
+
+        {!isLoaded ? null : !isSignedIn ? (
+          <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <ScrollText size={28} color="var(--accent-color)" />
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Sign in to view and manage company policies.</div>
+            <SignInButton mode="modal"><button className="btn-pill">Sign In</button></SignInButton>
+          </div>
+        ) : (
+          <>
+            {error && (
+              <div className="action-card" style={{ marginTop: 0 }}>
+                <h4><TriangleAlert size={16} /> {error}</h4>
+              </div>
+            )}
+
+            {adminGateEnabled && !canManage && (
+              <div className="action-card" style={{ marginTop: 0, borderColor: 'var(--warning-color)' }}>
+                <h4 style={{ color: 'var(--warning-color)' }}><ShieldAlert size={16} /> Read-only</h4>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Policy administration is restricted on this instance. You can view the active policy and its rules, but only an administrator can upload, edit or activate one.</p>
+              </div>
+            )}
+
+            {canManage && (
+              <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                <div className="dash-title-small">Upload a policy document</div>
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${isDragging ? 'var(--accent-color)' : 'var(--panel-border)'}`,
+                    borderRadius: '12px', padding: '1.5rem', textAlign: 'center', cursor: 'pointer',
+                    background: isDragging ? 'var(--bg-color)' : 'transparent', marginBottom: '1rem', transition: 'border-color 0.2s',
+                  }}
+                >
+                  <FileText size={22} color="var(--text-muted)" style={{ marginBottom: '0.5rem' }} />
+                  <div style={{ fontSize: '0.875rem', color: 'var(--text-color)' }}>{file ? file.name : 'Drop a PDF, DOCX, Markdown, TXT, or JSON rule file — or click to browse'}</div>
+                  <input ref={fileInputRef} type="file" accept=".pdf,.docx,.md,.txt,.json" style={{ display: 'none' }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input type="text" className="form-input" placeholder="Title (optional)" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+                  <select className="form-select" value={compileModel} onChange={(e) => setCompileModel(e.target.value)} style={{ width: 'auto', minWidth: 200 }}>
+                    {models.length ? models.map((m: any) => <option key={m.name} value={m.name}>{m.name}</option>) : <option value="">No models found</option>}
+                  </select>
+                  <button className="btn-pill" style={{ padding: '0.75rem 1.5rem', fontSize: '0.875rem', whiteSpace: 'nowrap' }} onClick={handleUpload} disabled={!file || isUploading}>
+                    {isUploading ? 'Uploading…' : 'Upload & compile'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div className="dash-title-small">Documents</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {documents.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No policy documents yet.</div>}
+                {documents.map((doc: any) => (
+                  <div key={doc.id} className="rule-row" style={{ alignItems: 'center', border: selectedId === doc.id ? '1px solid var(--accent-color)' : undefined }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="rule-row-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {doc.title}
+                        {doc.status === 'compiling' ? (
+                          <motion.div className="status-indicator" animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 1.2 }}>
+                            <div className="status-dot yellow"></div> Compiling with {doc.compile_model}…
+                          </motion.div>
+                        ) : (
+                          <div className="status-indicator" style={{ color: doc.status === 'archived' ? 'var(--text-muted)' : undefined }}>
+                            <div className={`status-dot ${statusDot(doc.status)}`} style={doc.status === 'archived' ? { background: 'var(--text-muted)' } : undefined}></div> {doc.status}
+                          </div>
+                        )}
+                        {doc.status === 'active' && doc.enforcement_mode === 'monitor' && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--warning-color)', border: '1px solid var(--warning-color)', borderRadius: '99px', padding: '0.1rem 0.6rem' }}>Monitor</span>
+                        )}
+                      </div>
+                      <div className="rule-row-desc">
+                        {doc.filename} · {formatBytes(doc.size_bytes)} · {doc.actionRuleCount} action / {doc.conductRuleCount} conduct rules ({doc.enabledRuleCount} enabled) · {new Date(doc.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {canManage && doc.status === 'active' && (
+                        <label className="toggle-switch" title={doc.enforcement_mode === 'enforce' ? 'Enforcing — click for monitor mode' : 'Monitor mode — click to enforce'}>
+                          <input type="checkbox" checked={doc.enforcement_mode === 'enforce'} onChange={() => handleModeToggle(doc)} />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      )}
+                      <button className="subtle-btn" style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem' }} onClick={() => setSelectedId(selectedId === doc.id ? null : doc.id)}>{selectedId === doc.id ? 'Close' : 'Review'}</button>
+                      {canManage && canActivate(doc) && <button className="subtle-btn" style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem' }} onClick={() => handleActivate(doc.id)}>Activate</button>}
+                      {canManage && (doc.status === 'active' || doc.status === 'review') && <button className="subtle-btn" style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem' }} onClick={() => handleArchive(doc.id)}>Archive</button>}
+                      {canManage && doc.status !== 'active' && doc.status !== 'compiling' && <button className="icon-btn" title="Delete" onClick={() => handleDelete(doc.id)}><Trash2 size={16} /></button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {selected && (
+              <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div className="dash-title-small" style={{ marginBottom: 0 }}>Rules — {selected.document.title}</div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {canManage && selected.document.status !== 'compiling' && (
+                      <button className="subtle-btn" style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem' }} onClick={() => { setEditingRuleId(null); setRuleForm(EMPTY_RULE_FORM); setIsAddingRule(true); }}><Plus size={12} style={{ display: 'inline', marginRight: 4 }} />Add rule</button>
+                    )}
+                    {canManage && (selected.document.status === 'review' || selected.document.status === 'failed' || selected.document.status === 'archived') && (
+                      <button className="subtle-btn" style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem' }} onClick={() => handleRecompile(selected.document.id)}>Recompile with {compileModel || selected.document.compile_model}</button>
+                    )}
+                    {canManage && canActivate({ ...selected.document, enabledRuleCount: selected.rules.filter((r: any) => r.enabled).length }) && (
+                      <button className="btn-pill" style={{ padding: '0.5rem 1.2rem', fontSize: '0.8rem' }} onClick={() => handleActivate(selected.document.id)}>Activate this policy</button>
+                    )}
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                  {selected.document.filename} · sha256 {selected.document.source_hash.slice(0, 12)}… · compiled with {selected.document.compile_model || '—'} · uploaded by {selected.document.uploaded_by}
+                </div>
+
+                {selected.document.status === 'compiling' && <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Compiling with {selected.document.compile_model}… this refreshes every 2 seconds.</div>}
+                {selected.document.status === 'failed' && (
+                  <div className="action-card" style={{ marginTop: 0, marginBottom: '1rem' }}>
+                    <h4><TriangleAlert size={16} /> Compilation failed</h4>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{selected.document.compile_error}</p>
+                  </div>
+                )}
+                {selected.document.status !== 'failed' && selected.document.compile_error && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--warning-color)', marginBottom: '1rem' }}>{selected.document.compile_error}</div>
+                )}
+
+                {isAddingRule && renderRuleForm()}
+
+                {selected.rules.length === 0 && selected.document.status !== 'compiling' && (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.75rem' }}>No rules yet — add rules manually or recompile with another model.</div>
+                )}
+                {selected.rules.some((r: any) => r.kind === 'action') && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <div className="dash-title-small" style={{ marginBottom: '0.5rem' }}>Action rules (enforced at the tool gate)</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>{selected.rules.filter((r: any) => r.kind === 'action').map(renderRule)}</div>
+                  </div>
+                )}
+                {selected.rules.some((r: any) => r.kind === 'conduct') && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <div className="dash-title-small" style={{ marginBottom: '0.5rem' }}>Conduct rules (system prompt + judge)</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>{selected.rules.filter((r: any) => r.kind === 'conduct').map(renderRule)}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div className="dash-title-small">Dry-run tester</div>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select className="form-select" value={dryTool} onChange={(e) => setDryTool(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
+                  {POLICY_TOOLS.filter(t => t !== '*').map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <input type="text" className="form-input" placeholder={`${POLICY_ARG_KEY[dryTool]} value, e.g. ${dryTool === 'execute_bash' ? 'sudo rm -rf /' : dryTool === 'web_search' ? 'our api key' : '/etc/passwd'}`} value={dryArg} onChange={(e) => setDryArg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleDryRun()} style={{ flex: 1, minWidth: 220 }} />
+                <button className="btn-pill" style={{ padding: '0.75rem 1.5rem', fontSize: '0.875rem' }} onClick={handleDryRun}>Evaluate</button>
+              </div>
+              {dryResult && (
+                <div className="action-card" style={{ borderColor: dryResult.decision.status === 'Blocked' ? 'var(--danger-color)' : dryResult.decision.status === 'Requires Approval' ? 'var(--warning-color)' : 'var(--success-color)', background: 'var(--bg-color)' }}>
+                  <h4 style={{ color: dryResult.decision.status === 'Blocked' ? 'var(--danger-color)' : dryResult.decision.status === 'Requires Approval' ? 'var(--warning-color)' : 'var(--success-color)' }}>
+                    <Shield size={16} /> {dryResult.decision.status}{dryResult.monitored ? ' (monitor mode)' : ''}
+                  </h4>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{dryResult.decision.reason}{dryResult.decision.ruleTitle ? ` — rule "${dryResult.decision.ruleTitle}"` : ''}</p>
+                  {dryResult.monitored && <p style={{ fontSize: '0.75rem', color: 'var(--warning-color)', marginTop: '0.5rem' }}>Would be {dryResult.monitored.status} when enforcing: {dryResult.monitored.reason}</p>}
+                </div>
+              )}
+            </div>
+
+            <div className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div className="dash-title-small" style={{ marginBottom: 0 }}>Recent policy events</div>
+                <button className="icon-btn" onClick={fetchEvents}><RefreshCw size={14} /></button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {events.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No policy decisions recorded yet.</div>}
+                {events.map((ev: any) => (
+                  <div key={ev.id} className="rule-row" style={{ padding: '0.75rem 1rem' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="rule-row-title" style={{ fontSize: '0.8rem' }}>{ev.tool || ev.channel}{ev.rule_title ? ` · ${ev.rule_title}` : ''}</div>
+                      <div className="rule-row-desc">{new Date(ev.timestamp).toLocaleString()} · {ev.channel} · {ev.source}{ev.arguments_excerpt ? ` · ${ev.arguments_excerpt.slice(0, 80)}` : ''}</div>
+                    </div>
+                    <div className="status-indicator">
+                      <div className={`status-dot ${ev.decision === 'blocked' || ev.decision === 'denied' ? 'red' : ev.decision === 'allowed' || ev.decision === 'approved' ? 'green' : 'yellow'}`}></div> {ev.decision.replace('_', ' ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </motion.div>
   );

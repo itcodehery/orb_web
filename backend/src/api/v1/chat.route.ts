@@ -6,6 +6,10 @@ import { resolvePerformanceMode } from '../../llm/performanceModes';
 import { apiKeyAuth } from '../../middleware/apiKeyAuth';
 import { insertLog } from '../../db/auditLog.repo';
 import { TOOL_USE_DIRECTIVE } from '../../agent/systemPrompt';
+import { createPolicyResolver } from '../../policy/resolver';
+import { getActivePolicy } from '../../policy/engine';
+import { buildPolicyPromptSection } from '../../policy/prompt';
+import { PolicyContext } from '../../policy/types';
 import { Message, ToolCall } from '../../types';
 
 const router = Router();
@@ -29,7 +33,7 @@ router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
   const mode = resolvePerformanceMode(performanceMode);
   const llm = createLLM(model, mode);
   const agent = new Agent(llm, registry, executor);
-  const combinedSystemPrompt = (systemPrompt || '') + TOOL_USE_DIRECTIVE;
+  const combinedSystemPrompt = (systemPrompt || '') + buildPolicyPromptSection(getActivePolicy()) + TOOL_USE_DIRECTIVE;
 
   const enabledToolNames = new Set(
     (Object.keys(TOOL_NAMES_BY_FLAG) as Array<'fs' | 'bash' | 'web'>)
@@ -37,11 +41,17 @@ router.post('/chat', apiKeyAuth, async (req: Request, res: Response) => {
       .flatMap((flag) => TOOL_NAMES_BY_FLAG[flag])
   );
 
+  // No human is present on the programmatic API, so a company policy
+  // "Requires Approval" match degrades to Blocked (see policy/evaluate.ts).
+  const sessionResolver = (toolName: string) => (enabledToolNames.has(toolName) ? 'Allowed' : 'Blocked');
+  const policyCtx: PolicyContext = { channel: 'api', apiKeyId: apiKey.id, allowApproval: false, sessionSource: 'api_key' };
+  const layeredResolver = createPolicyResolver({ sessionResolver, sessionSource: 'api_key', ctx: policyCtx });
+
   const policyDecisions: Record<string, string> = {};
-  const getPolicyStatus = (toolName: string) => {
-    const status = enabledToolNames.has(toolName) ? 'Allowed' : 'Blocked';
-    policyDecisions[toolName] = status;
-    return status;
+  const getPolicyStatus = (toolCall: ToolCall) => {
+    const decision = layeredResolver(toolCall);
+    policyDecisions[toolCall.function.name] = decision.status;
+    return decision;
   };
 
   let responseContent = '';

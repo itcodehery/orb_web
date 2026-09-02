@@ -12,6 +12,7 @@ import keysRoutes from './api/keys.route';
 import connectorsRoutes from './api/connectors.route';
 import memoriesRoutes from './api/memories.route';
 import sessionsRoutes from './api/sessions.route';
+import policiesRoutes from './api/policies.route';
 import v1ModelsRoutes from './api/v1/models.route';
 import v1ChatRoutes from './api/v1/chat.route';
 import { initDb } from './db/init';
@@ -30,6 +31,7 @@ app.use('/api', keysRoutes);
 app.use('/api', connectorsRoutes);
 app.use('/api', memoriesRoutes);
 app.use('/api', sessionsRoutes);
+app.use('/api', policiesRoutes);
 app.use('/api/v1', v1ModelsRoutes);
 app.use('/api/v1', v1ChatRoutes);
 

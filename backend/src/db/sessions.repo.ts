@@ -31,6 +31,12 @@ export interface SessionSummary {
   messageCount: number;
   avgLatencyMs: number | null;
   avgRiskScore: number | null;
+  policyFlagCount: number;
+}
+
+export interface PolicyFlag {
+  ruleId: number;
+  title: string;
 }
 
 interface SessionDbRow {
@@ -119,7 +125,7 @@ export function upsertActiveMessages(sessionId: number, userId: string, messages
     const prev = prior[i];
     if (!prev) return m;
     const carried: any = { ...m };
-    for (const field of ['totalMs', 'firstTokenMs', 'riskScore']) {
+    for (const field of ['totalMs', 'firstTokenMs', 'riskScore', 'policyFlags']) {
       if (carried[field] === undefined && prev[field] !== undefined) {
         carried[field] = prev[field];
       }
@@ -175,6 +181,31 @@ export function patchMessageRiskScore(
   );
 }
 
+// Same race-safe (sessionId, messageIndex) contract as patchMessageRiskScore —
+// the background judge can take 40-75s, so it patches by an explicit index
+// captured at request time rather than "whichever message is newest".
+export function patchMessagePolicyFlags(
+  sessionId: number,
+  userId: string,
+  messageIndex: number,
+  flags: PolicyFlag[]
+): void {
+  const row = db
+    .prepare(`SELECT * FROM sessions WHERE id = ? AND user_id = ?`)
+    .get(sessionId, userId) as SessionDbRow | undefined;
+  if (!row) return;
+
+  const messages = JSON.parse(row.messages);
+  if (!Array.isArray(messages) || messageIndex < 0 || messageIndex >= messages.length) return;
+
+  messages[messageIndex] = { ...messages[messageIndex], policyFlags: flags };
+  db.prepare(`UPDATE sessions SET messages = ?, updated_at = ? WHERE id = ?`).run(
+    JSON.stringify(messages),
+    new Date().toISOString(),
+    sessionId
+  );
+}
+
 export function completeActiveSession(userId: string): void {
   db.prepare(`UPDATE sessions SET status = 'completed', updated_at = ? WHERE user_id = ? AND status = 'active'`).run(
     new Date().toISOString(),
@@ -191,6 +222,7 @@ export function listSessions(userId: string): SessionSummary[] {
     const messages: any[] = JSON.parse(row.messages);
     const latencies = messages.map(m => m.totalMs).filter((v): v is number => typeof v === 'number');
     const risks = messages.map(m => m.riskScore).filter((v): v is number => typeof v === 'number');
+    const policyFlagCount = messages.reduce((sum: number, m: any) => sum + (Array.isArray(m.policyFlags) ? m.policyFlags.length : 0), 0);
     return {
       id: row.id,
       title: row.title,
@@ -200,6 +232,7 @@ export function listSessions(userId: string): SessionSummary[] {
       messageCount: messages.length,
       avgLatencyMs: latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null,
       avgRiskScore: risks.length ? Math.round(risks.reduce((a, b) => a + b, 0) / risks.length) : null,
+      policyFlagCount,
     };
   });
 }

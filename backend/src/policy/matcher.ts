@@ -1,17 +1,9 @@
 import path from 'path';
-import os from 'os';
 import picomatch from 'picomatch';
 import { PolicyRule, MatchField } from './types';
+import { normalizePath } from '../utils/paths';
 
-function expandHome(value: string): string {
-  if (value === '~') return os.homedir();
-  if (value.startsWith('~/')) return path.join(os.homedir(), value.slice(2));
-  return value;
-}
-
-export function normalizePath(value: string): string {
-  return path.resolve(expandHome(value));
-}
+export { normalizePath };
 
 export function extractFieldValue(args: Record<string, unknown> | null | undefined, field: MatchField): string {
   if (field === '*') return JSON.stringify(args ?? {});

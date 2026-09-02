@@ -1,5 +1,6 @@
 import { Tool } from './Tool';
 import * as fs from 'fs';
+import { normalizePath } from '../utils/paths';
 
 export class WriteFileTool implements Tool {
   name = 'write_file';
@@ -14,9 +15,10 @@ export class WriteFileTool implements Tool {
   };
 
   async execute(args: any): Promise<string> {
+    const filepath = normalizePath(args.filepath);
     try {
-      fs.writeFileSync(args.filepath, args.content, 'utf-8');
-      return `Wrote ${args.content.length} bytes to ${args.filepath}`;
+      fs.writeFileSync(filepath, args.content, 'utf-8');
+      return `Wrote ${args.content.length} bytes to ${filepath}`;
     } catch (error: any) {
       return `Failed to write file: ${error.message}`;
     }

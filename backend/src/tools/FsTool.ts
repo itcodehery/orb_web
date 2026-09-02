@@ -1,5 +1,6 @@
 import { Tool } from './Tool';
 import * as fs from 'fs';
+import { normalizePath } from '../utils/paths';
 
 export class FsTool implements Tool {
   name = 'read_file';
@@ -14,7 +15,7 @@ export class FsTool implements Tool {
 
   async execute(args: any): Promise<string> {
     try {
-      const content = fs.readFileSync(args.filepath, 'utf-8');
+      const content = fs.readFileSync(normalizePath(args.filepath), 'utf-8');
       return content.substring(0, 5000); // Limit output length
     } catch (error: any) {
       return `Failed to read file: ${error.message}`;

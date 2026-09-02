@@ -29,23 +29,33 @@ ${conductRules.map(r => `[${r.id}] ${r.title} — ${r.directive}`).join('\n')}
 `
     : '';
 
+  // Numbered list + an explicit anti-suppression instruction: without both,
+  // small local models (verified against qwen3:8b) treat ANY non-empty
+  // "already known" list as a signal to return newFacts: [] outright, even
+  // when the exchange states an obviously new, explicitly-flagged fact
+  // ("please remember this: ..."). A bare "- fact" bullet list without that
+  // instruction reproduces the bug 8/8 times.
+  const factsBlock = existingFacts.length
+    ? existingFacts.map((f, i) => `${i + 1}. ${f}`).join('\n')
+    : '(none yet)';
+
   const prompt = `You analyze one exchange from a conversation between a user and an AI assistant.
 
-Facts already known about this user:
-${existingFacts.length ? existingFacts.map(f => `- ${f}`).join('\n') : '(none yet)'}
+Numbered list of facts already known about this user:
+${factsBlock}
 
 Latest exchange:
 User: ${userMessage}
 Assistant: ${assistantReply}
 
 Do ${conductRules.length ? 'three' : 'two'} things:
-1. List any genuinely new, durable facts about the user that are not already known above — things like their name, stated preferences, ongoing projects, or recurring context. Do NOT include one-off questions, requests, or facts already listed.
+1. Read the User's message on its own. Does it state or imply any durable fact about the user (name, preference, possession, ongoing project, recurring context) that is NOT already covered by one of the numbered facts above? A non-empty numbered list above is NOT a reason to return an empty array — check each candidate fact against the list individually, and include it if it is genuinely absent from the list. If the user explicitly says "remember this" or similar, treat what follows as a fact to extract unless it is already in the numbered list. Do NOT include one-off questions or requests that state no fact.
 2. Rate, from 0 to 100, how likely the Assistant's reply contains ungrounded, fabricated, or unsupported claims (0 = fully grounded/safe, 100 = highly likely to be hallucinated).
 ${conductSection}
 Respond with a single JSON object and nothing else, in this exact shape:
 {"newFacts": ["fact one", "fact two"], "hallucinationRisk": 15, "policyViolations": [12]}
 
-If there are no new facts, use an empty array. hallucinationRisk must always be a number. policyViolations must always be an array of numbers (empty when nothing is violated).`;
+If there are truly no new facts, use an empty array. hallucinationRisk must always be a number. policyViolations must always be an array of numbers (empty when nothing is violated).`;
 
   try {
     // Uncapped (num_predict:-1) + thinking disabled: background analysis must

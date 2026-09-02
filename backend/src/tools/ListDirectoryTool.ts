@@ -1,5 +1,6 @@
 import { Tool } from './Tool';
 import * as fs from 'fs';
+import { normalizePath } from '../utils/paths';
 
 export class ListDirectoryTool implements Tool {
   name = 'list_directory';
@@ -14,7 +15,7 @@ export class ListDirectoryTool implements Tool {
 
   async execute(args: any): Promise<string> {
     try {
-      const entries = fs.readdirSync(args.dirpath, { withFileTypes: true });
+      const entries = fs.readdirSync(normalizePath(args.dirpath), { withFileTypes: true });
       return entries.map(e => `${e.isDirectory() ? 'd' : '-'} ${e.name}`).join('\n') || '(empty directory)';
     } catch (error: any) {
       return `Failed to list directory: ${error.message}`;

@@ -1,6 +1,14 @@
-import { Ollama } from '../llm/Ollama';
+import { createExtractionLLM } from '../llm/factory';
 import { createMemory } from '../db/memories.repo';
-import { patchMessageRiskScore } from '../db/sessions.repo';
+import { patchMessageRiskScore, patchMessagePolicyFlags, PolicyFlag } from '../db/sessions.repo';
+import { insertEvent } from '../db/policies.repo';
+
+export interface ConductRuleRef {
+  id: number;
+  documentId: number;
+  title: string;
+  directive: string;
+}
 
 export async function analyzeChat(
   userId: string,
@@ -9,9 +17,17 @@ export async function analyzeChat(
   messageIndex: number,
   existingFacts: string[],
   userMessage: string,
-  assistantReply: string
+  assistantReply: string,
+  conductRules: ConductRuleRef[] = []
 ): Promise<void> {
   if (!userMessage || !assistantReply) return;
+
+  const conductSection = conductRules.length
+    ? `
+3. Check the Assistant's reply against these company conduct rules and list the numeric ids of every rule the reply violates (an empty array if none):
+${conductRules.map(r => `[${r.id}] ${r.title} — ${r.directive}`).join('\n')}
+`
+    : '';
 
   const prompt = `You analyze one exchange from a conversation between a user and an AI assistant.
 
@@ -22,20 +38,20 @@ Latest exchange:
 User: ${userMessage}
 Assistant: ${assistantReply}
 
-Do two things:
+Do ${conductRules.length ? 'three' : 'two'} things:
 1. List any genuinely new, durable facts about the user that are not already known above — things like their name, stated preferences, ongoing projects, or recurring context. Do NOT include one-off questions, requests, or facts already listed.
 2. Rate, from 0 to 100, how likely the Assistant's reply contains ungrounded, fabricated, or unsupported claims (0 = fully grounded/safe, 100 = highly likely to be hallucinated).
-
+${conductSection}
 Respond with a single JSON object and nothing else, in this exact shape:
-{"newFacts": ["fact one", "fact two"], "hallucinationRisk": 15}
+{"newFacts": ["fact one", "fact two"], "hallucinationRisk": 15, "policyViolations": [12]}
 
-If there are no new facts, use an empty array. hallucinationRisk must always be a number.`;
+If there are no new facts, use an empty array. hallucinationRisk must always be a number. policyViolations must always be an array of numbers (empty when nothing is violated).`;
 
   try {
     // Uncapped (num_predict:-1) + thinking disabled: background analysis must
     // always reach the JSON content, which qwen-style thinking models otherwise
     // starve under the low profile's 512-token cap.
-    const llm = new Ollama(model, 'high', undefined, false);
+    const llm = createExtractionLLM(model);
     const response = await llm.chat([{ role: 'user', content: prompt }]);
     const text = (response.text || '').trim();
 
@@ -56,6 +72,31 @@ If there are no new facts, use an empty array. hallucinationRisk must always be 
 
     if (typeof parsed.hallucinationRisk === 'number') {
       patchMessageRiskScore(sessionId, userId, messageIndex, parsed.hallucinationRisk);
+    }
+
+    if (conductRules.length && Array.isArray(parsed.policyViolations)) {
+      const byId = new Map(conductRules.map(r => [r.id, r]));
+      const flags: PolicyFlag[] = [];
+      for (const value of parsed.policyViolations) {
+        const rule = byId.get(Number(value));
+        if (rule && !flags.some(f => f.ruleId === rule.id)) flags.push({ ruleId: rule.id, title: rule.title });
+      }
+      if (flags.length) {
+        patchMessagePolicyFlags(sessionId, userId, messageIndex, flags);
+        for (const flag of flags) {
+          const rule = byId.get(flag.ruleId)!;
+          insertEvent({
+            channel: 'judge',
+            decision: 'flagged',
+            source: 'judge',
+            documentId: rule.documentId,
+            ruleId: rule.id,
+            userId,
+            sessionId,
+            message: `Reply flagged for "${rule.title}" (message ${messageIndex}).`,
+          });
+        }
+      }
     }
   } catch (error) {
     console.error('Post-chat analysis failed:', error);

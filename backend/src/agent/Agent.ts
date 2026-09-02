@@ -3,6 +3,7 @@ import { ToolRegistry } from '../tools/registry';
 import { ToolExecutor } from './ToolExecutor';
 import { Message, ToolCall } from '../types';
 import { PerformanceMode, PERFORMANCE_PROFILES } from '../llm/performanceModes';
+import { PolicyDecision } from '../policy/types';
 
 export class Agent {
   constructor(
@@ -18,7 +19,7 @@ export class Agent {
     messages: Message[],
     systemPrompt: string,
     streamCallback: (chunk: any) => void,
-    getPolicyStatus: (toolName: string) => string,
+    getPolicyStatus: (toolCall: ToolCall) => PolicyDecision,
     performanceMode: PerformanceMode = 'high',
     signal?: AbortSignal
   ): Promise<{ finalReply: string | null }> {
@@ -92,15 +93,16 @@ export class Agent {
         streamCallback({ type: 'tool_call_intent', toolCalls });
 
         for (const toolCall of toolCalls) {
-          const policy = getPolicyStatus(toolCall.function.name);
+          const decision = getPolicyStatus(toolCall);
+          const policyMeta = { ruleId: decision.ruleId, ruleTitle: decision.ruleTitle, source: decision.source, documentId: decision.documentId };
 
-          if (policy === 'Blocked') {
-            const blockMsg = `Action Blocked: Policy enforces blocking for ${toolCall.function.name}.`;
+          if (decision.status === 'Blocked') {
+            const blockMsg = decision.reason;
             currentMessages.push({ role: 'tool', name: toolCall.function.name, content: blockMsg, tool_call_id: toolCall.id });
-            streamCallback({ type: 'tool_result', name: toolCall.function.name, result: blockMsg, toolCallId: toolCall.id });
-          } else if (policy === 'Requires Approval') {
+            streamCallback({ type: 'tool_result', name: toolCall.function.name, result: blockMsg, toolCallId: toolCall.id, blocked: true, policy: policyMeta });
+          } else if (decision.status === 'Requires Approval') {
             // Pause loop and yield back to client
-            streamCallback({ type: 'requires_approval', toolCall });
+            streamCallback({ type: 'requires_approval', toolCall, policy: policyMeta });
             // End the current run. The client must resume.
             return { finalReply: null };
           } else {

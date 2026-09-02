@@ -24,3 +24,14 @@ export function createLLM(model: string, mode: PerformanceMode, outputLimitToken
   }
   return new Ollama(model, mode, outputLimitTokens);
 }
+
+// For background "compile this into structured JSON" jobs (post-chat analysis,
+// policy-document compilation): non-streaming, uncapped, thinking disabled for
+// Ollama so qwen-style thinking models don't starve the JSON content under a
+// token cap; cloud models just use the normal high-performance profile.
+export function createExtractionLLM(model: string): LLM {
+  if (isCloudModel(model)) {
+    return createLLM(model, 'high');
+  }
+  return new Ollama(model, 'high', undefined, false);
+}

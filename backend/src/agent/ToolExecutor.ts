@@ -1,5 +1,6 @@
 import { ToolRegistry } from '../tools/registry';
 import { ToolCall } from '../types';
+import { hardDenyCheck } from '../policy/engine';
 
 export class ToolExecutor {
   constructor(private registry: ToolRegistry) {}
@@ -20,6 +21,13 @@ export class ToolExecutor {
           args = toolCall.function.arguments;
         }
       }
+
+      // Defense in depth: even a caller that reaches ToolExecutor directly
+      // (bypassing the resolver) cannot run something the active, enforcing
+      // company policy explicitly denies.
+      const denial = hardDenyCheck(toolCall.function.name, args);
+      if (denial) return denial.reason;
+
       const result = await tool.execute(args);
       return result;
     } catch (error: any) {

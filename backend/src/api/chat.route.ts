@@ -10,6 +10,11 @@ import { requireAuth } from '../middleware/requireAuth';
 import { listMemories } from '../db/memories.repo';
 import { getActiveSession, createActiveSession, upsertActiveMessages } from '../db/sessions.repo';
 import { analyzeChat } from '../agent/postChatAnalysis';
+import { createPolicyResolver, evaluateApprovedToolCall } from '../policy/resolver';
+import { getActivePolicy } from '../policy/engine';
+import { buildPolicyPromptSection } from '../policy/prompt';
+import { PolicyContext } from '../policy/types';
+import { ToolCall } from '../types';
 
 const router = Router();
 
@@ -28,9 +33,10 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
     const requestStartedAt = Date.now();
 
     const existingFacts = listMemories(userId as string).map(m => m.content);
+    const activePolicy = getActivePolicy();
     let combinedSystemPrompt = (existingFacts.length
       ? `${systemPrompt}\n\n## What you know about this user (from past conversations):\n${existingFacts.map(f => `- ${f}`).join('\n')}`
-      : systemPrompt) + TOOL_USE_DIRECTIVE;
+      : systemPrompt) + buildPolicyPromptSection(activePolicy) + TOOL_USE_DIRECTIVE;
 
     const limit = typeof outputLimitTokens === 'number' && outputLimitTokens > 0 ? outputLimitTokens : undefined;
     if (limit) {
@@ -44,7 +50,16 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Transfer-Encoding', 'chunked');
 
-    const getPolicyStatus = buildPolicyResolver(validChatMode(chatMode), toolPolicies);
+    const resolvedChatMode = validChatMode(chatMode);
+    const sessionResolver = buildPolicyResolver(resolvedChatMode, toolPolicies);
+    const policyCtx: PolicyContext = {
+      channel: 'chat',
+      userId: userId as string,
+      sessionId: session.id,
+      allowApproval: true,
+      sessionSource: resolvedChatMode === 'Policy' ? 'session' : 'mode',
+    };
+    const getPolicyStatus = createPolicyResolver({ sessionResolver, sessionSource: policyCtx.sessionSource, ctx: policyCtx });
 
     const streamCallback = (chunk: any) => {
       if (!res.writableEnded) res.write(JSON.stringify(chunk) + '\n');
@@ -63,7 +78,8 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
       upsertActiveMessages(session.id, userId as string, [...messages, assistantMessage]);
 
       if (lastUserMessage?.content) {
-        analyzeChat(userId as string, model, session.id, messageIndex, existingFacts, lastUserMessage.content, finalReply).catch(err => {
+        const conductRules = (activePolicy?.conductRules || []).map(r => ({ id: r.id, documentId: r.document_id, title: r.title, directive: r.directive || '' }));
+        analyzeChat(userId as string, model, session.id, messageIndex, existingFacts, lastUserMessage.content, finalReply, conductRules).catch(err => {
           console.error('Post-chat analysis failed:', err);
         });
       }
@@ -83,16 +99,21 @@ router.post('/chat', requireAuth, async (req: Request, res: Response) => {
 
 router.post('/execute_tool', requireAuth, async (req: Request, res: Response) => {
   try {
+    const { userId } = getAuth(req);
     const { tool_name, arguments: args } = req.body;
-    
+
     // Execute a single tool call directly, useful for resuming after manual approval
-    const result = await executor.execute({
-      type: 'function',
-      function: {
-        name: tool_name,
-        arguments: args
-      }
-    });
+    const toolCall: ToolCall = { type: 'function', function: { name: tool_name, arguments: args } };
+
+    // The human already approved this exact call — only an explicit company
+    // "deny" rule can still stop it here.
+    const denial = evaluateApprovedToolCall(toolCall, { channel: 'execute_tool', userId: userId as string, allowApproval: true, sessionSource: 'session' });
+    if (denial) {
+      res.json({ result: denial.reason, blocked: true, policy: { ruleId: denial.ruleId, ruleTitle: denial.ruleTitle, source: denial.source, documentId: denial.documentId } });
+      return;
+    }
+
+    const result = await executor.execute(toolCall);
 
     res.json({ result });
   } catch (error: any) {
